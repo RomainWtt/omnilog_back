@@ -85,7 +85,7 @@ git push origin feature/nom-feature
 
 **Conventions de commit :**
 
-```bash
+```
 feat: nouvelle fonctionnalité  
 fix: correction de bug  
 docs: documentation  
