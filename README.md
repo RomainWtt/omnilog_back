@@ -1,93 +1,384 @@
-# Omnilog Backend
+# **🚀 Omnilog Backend**
 
+Application API RESTful moderne construite avec **FastAPI**, **Python 3.10+**, **SQLAlchemy** et **Pydantic**.
 
+## **📋 Table des matières**
 
-## Getting started
+* [Workflow Git & Branches](#-workflow-git--branches)  
+* [Installation](#-installation)  
+* [Variables d'environnement](#-variables-denvironnement)  
+* [Scripts et Commandes](#-scripts-et-commandes)  
+* [Architecture du projet](#️-architecture-du-projet)  
+* [Technologies utilisées](#️-technologies-utilisées)  
+* [Base de données & Migrations](#️-base-de-données--migrations)  
+* [Tests](#-tests)  
+* [Documentation de l'API](#-documentation-de-lapi)
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## **🌳 Workflow Git & Branches**
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+### **Structure des branches**
 
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+Notre projet suit le modèle **Git Flow** avec les branches suivantes :
 
 ```
-cd existing_repo
-git remote add origin https://git.helmo.be/Q220059/omnilog-backend.git
-git branch -M main
-git push -uf origin main
+main (production)  
+│  
+├── develop (développement actif)  
+│   │  
+│   ├── feature/nom-feature (nouvelles fonctionnalités)  
+│   ├── feature/autre-feature  
+│   │  
+│   └── release/v1.0.0 (préparation release)  
+│  
+└── hotfix/correction-urgente (fixes de production)
 ```
 
-## Integrate with your tools
+### **📌 Branches principales**
 
-- [ ] [Set up project integrations](https://git.helmo.be/Q220059/omnilog-backend/-/settings/integrations)
+#### **main**
 
-## Collaborate with your team
+* **Branche de production** - Code en production  
+* ⚠️ **Protégée** - Merge uniquement via Pull/Merge Request  
+* Contient uniquement du code testé et validé  
+* Chaque merge crée automatiquement un tag de version
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+#### **develop**
 
-## Test and Deploy
+* **Branche de développement** - Intégration continue  
+* Point de départ pour toutes les features  
+* Merge des features terminées  
+* Tests d'intégration
 
-Use the built-in continuous integration in GitLab.
+### **🔧 Branches de travail**
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+#### **feature/\***
 
-***
+**Création d'une nouvelle fonctionnalité :**
 
-# Editing this README
+```bash
+# Se placer sur develop  
+git checkout develop  
+git pull origin develop
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+# Créer la branche feature  
+git checkout -b feature/nom-explicite-de-la-feature
 
-## Suggestions for a good README
+# Exemples de noms :  
+# feature/user-authentication  
+# feature/crud-items  
+# feature/jwt-security
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+**Workflow feature :**
 
-## Name
-Choose a self-explaining name for your project.
+```bash
+# Développement  
+git add .  
+git commit -m "feat: description de la fonctionnalité"
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+# Push de la feature  
+git push origin feature/nom-feature
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+# Créer une Merge Request vers develop  
+# Via GitLab UI → Create merge request
+```
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+**Conventions de commit :**
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+```bash
+feat: nouvelle fonctionnalité  
+fix: correction de bug  
+docs: documentation  
+style: formatage, linting  
+refactor: refactoring du code  
+test: ajout de tests  
+chore: maintenance, mise à jour des dépendances  
+db: migration ou modification de schéma
+```
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+#### **release/\***
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+**Préparation d'une nouvelle version :**
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+```bash
+# 1. PRÉPARATION - Créer depuis develop  
+git checkout develop  
+git pull origin develop  
+git checkout -b release/v1.2.0
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+# 2. VERSION - (Optionnel : Mettre à jour la version de l'API dans le code/docs)  
+# ... modifications ...  
+git add .  
+git commit -m "chore: prepare release v1.2.0"
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+# 3. MERGE MAIN - D'abord vers main  
+git checkout main  
+git pull origin main  # IMPORTANT: être à jour  
+git merge --no-ff release/v1.2.0 -m "Merge branch 'release/v1.2.0'"  
+git tag -a v1.2.0 -m "Version 1.2.0"  
+git push origin main --tags
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+# 4. MERGE DEVELOP - Puis vers develop  
+git checkout develop  
+git pull origin develop  # IMPORTANT: être à jour  
+git merge --no-ff release/v1.2.0 -m "Merge branch 'release/v1.2.0' into develop"  
+git push origin develop
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+# 5. NETTOYAGE - Supprimer la branche release  
+git branch -d release/v1.2.0
+```
 
-## License
-For open source projects, say how it is licensed.
+#### **hotfix/\***
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+**Correction urgente en production :**
+
+```bash
+# Créer depuis main  
+git checkout main  
+git pull origin main  
+git checkout -b hotfix/fix-critical-bug
+
+# Corriger le bug  
+git add .  
+git commit -m "fix: correction du bug critique"
+
+# Merge vers main ET develop  
+git checkout main  
+git merge --no-ff hotfix/fix-critical-bug  
+git tag -a v1.1.1 -m "Hotfix v1.1.1"  
+git push origin main --tags
+
+git checkout develop  
+git merge --no-ff hotfix/fix-critical-bug  
+git push origin develop
+```
+
+### **✅ Règles et bonnes pratiques**
+
+1. **Ne jamais commit directement sur main ou develop**  
+2. **Toujours créer une feature branch depuis develop**  
+3. **Une feature \= une branche \= une fonctionnalité**  
+4. **Faire des commits atomiques et bien décrits**  
+5. **Tester localement avant de push (pytest)**  
+6. **Demander une review pour chaque Merge Request**  
+7. **Mettre à jour sa branche avec develop régulièrement :**  
+```bash
+   git checkout feature/ma-feature  
+   git pull origin develop  
+   # Résoudre les conflits si nécessaire
+   ```
+
+## **💻 Installation**
+
+### **Prérequis**
+
+* **Python** >= 3.10  
+* **pip** (gestionnaire de paquets Python)  
+* **Git**  
+* (Optionnel mais recommandé) Une base de données PostgreSQL
+
+### **Installation du projet**
+
+```bash
+# Cloner le repository  
+git clone git@gitlab.com:Q220059/omnilog-backend.git  
+cd omnilog-backend
+
+# Créer un environnement virtuel  
+python -m venv venv
+
+# Activer l'environnement virtuel  
+# Sur macOS/Linux:  
+source venv/bin/activate  
+# Sur Windows:  
+.\\venv\\Scripts\\activate
+
+# Installer les dépendances  
+pip install -r requirements.txt
+
+# Copier le fichier d'environnement  
+cp .env.example .env
+
+Après avoir copié le fichier .env, **vous devez le remplir** avec vos propres configurations (voir section suivante).
+
+# Lancer le serveur avec rechargement automatique  
+uvicorn app.main:app --reload
+```
+
+L'API sera accessible sur [http://localhost:8000](http://localhost:8000)
+
+## **🔒 Variables d'environnement**
+
+Le fichier .env est utilisé pour configurer l'application. Il est chargé au démarrage (typiquement via Pydantic Settings).
+
+**Exemple de fichier .env :**
+
+```json
+# .env
+
+# Configuration de la base de données (exemple PostgreSQL)  
+# Format: "postgresql+asyncpg://USER:PASSWORD@HOST:PORT/DB_NAME"  
+DATABASE_URL="postgresql+asyncpg://omnilog_user:secret_password@localhost:5432/omnilog_db"
+
+# Sécurité (JWT)  
+# Générer une clé secrète forte (ex: openssl rand -hex 32)  
+JWT_SECRET_KEY="votre_cle_secrete_tres_tres_longue_de_32_octets"  
+JWT_ALGORITHM="HS256"  
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+
+# Mode debug de l'application  
+DEBUG=True
+```
+
+## **📜 Scripts et Commandes**
+
+| Commande | Description |  
+| --- | --- |
+| ``uvicorn app.main:app --reload`` | Lance le serveur de développement (auto-reload) |  
+| ``pytest`` | Lance la suite de tests unitaires et d'intégration |  
+| ``alembic upgrade head`` | Applique les dernières migrations à la base de données |  
+| ``alembic revision --autogenerate -m "..."`` | Crée un nouveau fichier de migration basé sur les modèles |
+
+
+## **🏗️ Architecture du projet**
+
+```
+omnilog-backend/  
+├── alembic/                    # Fichiers de migration Alembic  
+│   ├── versions/               # Fichiers de migration auto-générés  
+│   └── env.py                  # Configuration d'exécution d'Alembic  
+├── app/                        # Cœur de l'application FastAPI  
+│   ├── __init__.py  
+│   ├── api/                    # Routers et endpoints de l'API  
+│   │   ├── __init__.py  
+│   │   └── v1/                 # Version 1 de l'API  
+│   │       ├── __init__.py  
+│   │       ├── endpoints/      # Fichiers par ressource (auth.py, users.py)  
+│   │       └── router.py       # Agrégation des routers v1  
+│   ├── core/                   # Configuration et sécurité  
+│   │   ├── __init__.py  
+│   │   ├── config.py           # Chargement du .env (Pydantic Settings)  
+│   │   └── security.py         # Gestion JWT, hash de mots de passe  
+│   ├── crud/                   # Fonctions CRUD (logique base de données)  
+│   │   ├── __init__.py  
+│   │   └── crud_user.py  
+│   ├── db/                     # Session et modèles SQLAlchemy  
+│   │   ├── __init__.py  
+│   │   ├── base.py             # Classe de base déclarative (Base)  
+│   │   ├── models.py           # Modèles SQLAlchemy (tables)  
+│   │   └── session.py          # Gestion de la session (dépendance)  
+│   ├── schemas/                # Modèles Pydantic (validation des données)  
+│   │   ├── __init__.py  
+│   │   ├── token.py  
+│   │   └── user.py             # Schémas UserCreate, UserRead, etc.  
+│   ├── services/               # Logique métier complexe  
+│   │   ├── __init__.py  
+│   │   └── auth_service.py  
+│   └── main.py                 # Point d'entrée de l'app (FastAPI factory)  
+├── tests/                      # Tests Pytest  
+│   ├── __init__.py  
+│   ├── api/                    # Tests par endpoint  
+│   │   └── test_auth.py  
+│   ├── crud/                   # Tests des fonctions CRUD  
+│   └── conftest.py             # Fixtures Pytest (TestClient, session DB)  
+├── .env.example                # Fichier d'exemple pour l'environnement  
+├── .gitignore  
+├── alembic.ini                 # Configuration générale d'Alembic  
+├── requirements.txt            # Dépendances Python  
+├── pyproject.toml              # Configuration Black, Ruff, Pytest  
+└── README.md
+```
+
+## **🛠️ Technologies utilisées**
+
+### **Backend**
+
+* [**FastAPI**](https://fastapi.tiangolo.com/) - Framework API haute performance  
+* [**Python 3.10+**](https://www.python.org/) - Langage de programmation  
+* [**Pydantic**](https://docs.pydantic.dev/latest/) - Validation des données et gestion des settings  
+* [**Uvicorn**](https://www.uvicorn.org/) - Serveur ASGI
+
+### **Base de données**
+
+* [**SQLAlchemy**](https://www.sqlalchemy.org/) - ORM SQL (mode asynchrone)  
+* [**Alembic**](https://alembic.sqlalchemy.org/en/latest/) - Outil de migration de base de données  
+* [**psycopg (asyncpg)**](https://www.psycopg.org/psycopg3/docs/basic/async.html) - Driver PostgreSQL asynchrone
+
+### **Tests**
+
+* [**Pytest**](https://pytest.org/) - Framework de test  
+* [**TestClient**](https://fastapi.tiangolo.com/tutorial/testing/) - Client de test pour les applications ASGI
+
+## **🗄️ Base de données & Migrations**
+
+Nous utilisons **Alembic** (basé sur SQLAlchemy) pour gérer les migrations de schéma de la base de données.
+
+### **Créer une nouvelle migration**
+
+Après avoir modifié un modèle dans app/db/models.py :
+
+```bash
+# Générer automatiquement un fichier de migration  
+alembic revision --autogenerate -m "Description concise de la modification"
+
+# Exemple:  
+# alembic revision --autogenerate -m "Ajout de la colonne 'last_login' au modèle User"
+
+Vérifiez toujours le fichier de migration généré dans alembic/versions/ avant d appliquer.
+
+### Appliquer les migrations
+
+Pour mettre à jour votre base de données vers la dernière version :
+
+alembic upgrade head
+```
+
+## **🧪 Tests**
+
+Les tests sont écrits avec Pytest et se trouvent dans le dossier tests/. Ils utilisent TestClient pour envoyer des requêtes HTTP à l'API sans passer par un vrai serveur.
+
+### **Lancer les tests**
+
+```
+pytest
+```
+
+**Exemple de test (Pytest) :**
+
+```py
+# tests/api/test_auth.py  
+from fastapi.testclient import TestClient  
+from app.main import app
+
+client = TestClient(app)
+
+def test_login_success():  
+    # Note : Nécessite une fixture pour créer un utilisateur au préalable  
+    response = client.post(  
+        "/api/v1/auth/token",  
+        data={"username": "testuser@example.com", "password": "testpassword"}  
+    )  
+    assert response.status_code == 200  
+    data = response.json()  
+    assert "access_token" in data  
+    assert data["token_type"] == "bearer"
+
+def test_login_invalid_password():  
+    response = client.post(  
+        "/api/v1/auth/token",  
+        data={"username": "testuser@example.com", "password": "wrongpassword"}  
+    )  
+    assert response.status_code == 401  
+    assert response.json() == {"detail": "Incorrect username or password"}
+```
+
+## **📚 Documentation de l'API**
+
+FastAPI génère automatiquement une documentation interactive de l'API. Une fois le serveur lancé (uvicorn app.main:app --reload), vous pouvez y accéder :
+
+* Documentation Swagger UI :  
+  http://localhost:8000/docs  
+* Documentation ReDoc :  
+  http://localhost:8000/redoc
+
+Cette documentation est générée à partir de vos endpoints, des modèles Pydantic et des docstrings.
