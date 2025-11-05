@@ -181,20 +181,21 @@ git push origin develop
 
 ```bash
 # Cloner le repository  
-git clone git@gitlab.com:Q220059/omnilog-backend.git  
+git clone [URL]
 cd omnilog-backend
 
+Installer uv
 # Créer un environnement virtuel  
-python -m venv venv
+uv venv
 
 # Activer l'environnement virtuel  
-# Sur macOS/Linux:  
-source venv/bin/activate  
-# Sur Windows:  
-.\\venv\\Scripts\\activate
+#Commande normalement affichée a l'écran
 
 # Installer les dépendances  
-pip install -r requirements.txt
+uv pip install -e ".[dev]"
+
+#Pour ajouter rapidement des trucs
+uv pip install requests
 
 # Copier le fichier d'environnement  
 cp .env.example .env
