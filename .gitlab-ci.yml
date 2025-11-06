@@ -1,0 +1,72 @@
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  DOCKER_IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
+
+# Test stage
+test:
+  stage: test
+  image: python:3.11-slim
+  before_script:
+    - pip install -e ".[dev]"
+  script:
+    - pytest tests/ -v --tb=short
+  only:
+    - develop
+    - main
+    - merge_requests
+
+# Build Docker image
+build:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker build -t $DOCKER_IMAGE -t $DOCKER_IMAGE_LATEST .
+    - docker push $DOCKER_IMAGE
+    - docker push $DOCKER_IMAGE_LATEST
+  only:
+    - develop
+
+# Deploy on develop branch
+deploy:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo "$SSH_PRIVATE_KEY_BASE64" | base64 -d > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - |
+      cat > ~/.ssh/config <<EOF
+      Host production
+        HostName $DEPLOY_SERVER
+        User root
+        IdentityFile ~/.ssh/id_ed25519
+        StrictHostKeyChecking no
+        UserKnownHostsFile /dev/null
+        ServerAliveInterval 60
+        ServerAliveCountMax 3
+      EOF
+    - chmod 600 ~/.ssh/config
+
+  script:
+    - ssh $DEPLOY_USER@$DEPLOY_SERVER "
+        cd /opt/omnilog/backend &&
+        docker-compose pull api &&
+        docker-compose up -d api &&
+        docker-compose exec -T api alembic upgrade head
+      "
+  environment:
+    name: production
+    url: https://omnilog-api.mathdesigns.dev
+  only:
+    - develop
