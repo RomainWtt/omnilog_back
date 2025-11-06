@@ -14,7 +14,7 @@ test:
   variables:
     SECRET_KEY: "dummy-secret-key-for-ci-tests"
     TMDB_API_KEY: "dummy-tmdb-key"
-    DATABASE_URL: "sqlite:///./test.db"
+    DATABASE_URL: "sqlite+aiosqlite:///./test.db"
   before_script:
     - pip install -e ".[dev]"
   script:
