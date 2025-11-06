@@ -11,6 +11,10 @@ variables:
 test:
   stage: test
   image: python:3.11-slim
+  variables:
+    SECRET_KEY: "dummy-secret-key-for-ci-tests"
+    TMDB_API_KEY: "dummy-tmdb-key"
+    DATABASE_URL: "sqlite:///./test.db"
   before_script:
     - pip install -e ".[dev]"
   script:
