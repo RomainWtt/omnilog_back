@@ -379,6 +379,23 @@ FastAPI → PostgreSQL (async) → SQLModel ORM
 
 ## **🗄️ Base de données & Migrations**
 
+### Seed la DB
+
+Ajouter ceci au .env
+```bash
+ENVIRONMENT=development
+```
+
+Ensuite run:
+```bash
+python seed.py
+```
+ou
+```bash
+python seed.py clear
+python seed.py
+```
+
 Nous utilisons **Alembic** (basé sur SQLAlchemy) pour gérer les migrations de schéma de la base de données.
 
 ### **Créer une nouvelle migration**
