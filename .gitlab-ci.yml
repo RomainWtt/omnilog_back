@@ -60,7 +60,7 @@ deploy:
       cat > ~/.ssh/config <<EOF
       Host production
         HostName $DEPLOY_SERVER
-        User root
+        User $DEPLOY_USER
         IdentityFile ~/.ssh/id_ed25519
         StrictHostKeyChecking no
         UserKnownHostsFile /dev/null
@@ -70,7 +70,7 @@ deploy:
     - chmod 600 ~/.ssh/config
 
   script:
-    - ssh $DEPLOY_USER@$DEPLOY_SERVER "
+    - ssh production "
         cd /opt/omnilog/backend &&
         docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
         docker-compose pull api &&
