@@ -29,16 +29,20 @@ build:
   stage: build
   image: docker:24
   services:
-    - docker:24-dind
+    - name: docker:24-dind
+      command: ["--registry-mirror", "https://mirror.gcr.io"]
   variables:
     DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
   before_script:
+    - echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USER" --password-stdin
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASSWORD
   script:
     - docker build -t $DOCKER_IMAGE -t $DOCKER_IMAGE_LATEST .
     - docker push $DOCKER_IMAGE
     - docker push $DOCKER_IMAGE_LATEST
+  after_script:
+    - docker logout
   only:
     - main
 
@@ -47,7 +51,6 @@ deploy:
   stage: deploy
   image: alpine:latest
   before_script:
-    - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASSWORD
     - apk add --no-cache openssh-client
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
@@ -69,9 +72,11 @@ deploy:
   script:
     - ssh $DEPLOY_USER@$DEPLOY_SERVER "
         cd /opt/omnilog/backend &&
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
         docker-compose pull api &&
         docker-compose up -d api &&
-        docker-compose exec -T api alembic upgrade head
+        docker-compose exec -T api alembic upgrade head &&
+        docker logout
       "
   environment:
     name: production
