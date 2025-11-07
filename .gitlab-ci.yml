@@ -7,7 +7,7 @@ variables:
   DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
   DOCKER_IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
 
-# Test stage
+# Test stage - runs on develop and main
 test:
   stage: test
   image: python:3.11-slim
@@ -24,7 +24,7 @@ test:
     - main
     - merge_requests
 
-# Build Docker image
+# Build Docker image - only on main
 build:
   stage: build
   image: docker:24
@@ -39,9 +39,9 @@ build:
     - docker push $DOCKER_IMAGE
     - docker push $DOCKER_IMAGE_LATEST
   only:
-    - develop
+    - main
 
-# Deploy on develop branch
+# Deploy - only on main
 deploy:
   stage: deploy
   image: alpine:latest
@@ -75,4 +75,4 @@ deploy:
     name: production
     url: https://omnilog-api.mathdesigns.dev
   only:
-    - develop
+    - main
