@@ -1,215 +1,140 @@
 from typing import Optional
 from uuid import UUID
-
-from sqlmodel import Session, select
+from sqlmodel import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import User
-from app.schemas.user import UserCreate, UserUpdate
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash, verify_password
 
 
-class CRUDUser:
-    """
-    CRUD operations for User model.
-    
-    This class handles all database operations related to users:
-    - Creating new users
-    - Reading user data (by ID, email, username)
-    - Updating user information
-    - Deleting users
-    - Checking if users exist
-    """
-    
-    def get(self, db: Session, user_id: UUID) -> Optional[User]:
-        """
-        Get a user by ID.
-        
-        Args:
-            db: Database session
-            user_id: UUID of the user
-            
-        Returns:
-            User object if found, None otherwise
-        """
-        return db.get(User, user_id)
-    
-    def get_by_email(self, db: Session, email: str) -> Optional[User]:
-        """
-        Get a user by email address.
-        
-        Args:
-            db: Database session
-            email: Email address to search for
-            
-        Returns:
-            User object if found, None otherwise
-        """
-        statement = select(User).where(User.email == email)
-        return db.exec(statement).first()
-    
-    def get_by_username(self, db: Session, username: str) -> Optional[User]:
-        """
-        Get a user by username.
-        
-        Args:
-            db: Database session
-            username: Username to search for
-            
-        Returns:
-            User object if found, None otherwise
-        """
-        statement = select(User).where(User.username == username)
-        return db.exec(statement).first()
-    
-    def get_multi(
-        self, 
-        db: Session, 
-        *, 
-        skip: int = 0, 
-        limit: int = 100
-    ) -> list[User]:
-        """
-        Get multiple users with pagination.
-        
-        Args:
-            db: Database session
-            skip: Number of records to skip (offset)
-            limit: Maximum number of records to return
-            
-        Returns:
-            List of User objects
-        """
-        statement = select(User).offset(skip).limit(limit)
-        return db.exec(statement).all()
-    
-    def create(self, db: Session, *, obj_in: UserCreate) -> User:
-        """
-        Create a new user.
-        
-        Args:
-            db: Database session
-            obj_in: UserCreate schema with user data
-            
-        Returns:
-            Created User object
-        """
-        db_obj = User(
-            username=obj_in.username,
-            email=obj_in.email,
-            hashed_password=get_password_hash(obj_in.password),
-            avatar_url=obj_in.avatar_url
+async def get_user_by_id(session: AsyncSession, user_id: UUID) -> Optional[User]:
+    """Get user by ID"""
+    result = await session.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()
+
+
+async def get_user_by_email(session: AsyncSession, email: str) -> Optional[User]:
+    """Get user by email"""
+    result = await session.execute(select(User).where(User.email == email))
+    return result.scalar_one_or_none()
+
+
+async def get_user_by_username(session: AsyncSession, username: str) -> Optional[User]:
+    """Get user by username"""
+    result = await session.execute(select(User).where(User.username == username))
+    return result.scalar_one_or_none()
+
+
+async def get_user_by_email_or_username(
+    session: AsyncSession, 
+    identifier: str
+) -> Optional[User]:
+    """Get user by email or username"""
+    result = await session.execute(
+        select(User).where(
+            (User.email == identifier) | (User.username == identifier)
         )
-        db.add(db_obj)
-        db.commit()
-        db.refresh(db_obj)
-        return db_obj
-    
-    def update(
-        self, 
-        db: Session, 
-        *, 
-        db_obj: User, 
-        obj_in: UserUpdate
-    ) -> User:
-        """
-        Update an existing user.
-        
-        Args:
-            db: Database session
-            db_obj: Existing User object from database
-            obj_in: UserUpdate schema with updated data
-            
-        Returns:
-            Updated User object
-        """
-        # Get the data to update, excluding unset fields
-        update_data = obj_in.model_dump(exclude_unset=True)
-        
-        # If password is being updated, hash it
-        if "password" in update_data:
-            hashed_password = get_password_hash(update_data["password"])
-            del update_data["password"]
-            update_data["hashed_password"] = hashed_password
-        
-        # Update the user object
-        for field, value in update_data.items():
-            setattr(db_obj, field, value)
-        
-        db.add(db_obj)
-        db.commit()
-        db.refresh(db_obj)
-        return db_obj
-    
-    def delete(self, db: Session, *, user_id: UUID) -> User:
-        """
-        Delete a user by ID.
-        
-        Args:
-            db: Database session
-            user_id: UUID of the user to delete
-            
-        Returns:
-            Deleted User object
-        """
-        obj = db.get(User, user_id)
-        db.delete(obj)
-        db.commit()
-        return obj
-    
-    def exists_by_email(self, db: Session, email: str) -> bool:
-        """
-        Check if a user with given email exists.
-        
-        Args:
-            db: Database session
-            email: Email to check
-            
-        Returns:
-            True if user exists, False otherwise
-        """
-        statement = select(User).where(User.email == email)
-        return db.exec(statement).first() is not None
-    
-    def exists_by_username(self, db: Session, username: str) -> bool:
-        """
-        Check if a user with given username exists.
-        
-        Args:
-            db: Database session
-            username: Username to check
-            
-        Returns:
-            True if user exists, False otherwise
-        """
-        statement = select(User).where(User.username == username)
-        return db.exec(statement).first() is not None
-    
-    def authenticate(
-        self, 
-        db: Session, 
-        *, 
-        email: str, 
-        password: str
-    ) -> Optional[User]:
-        """
-        Authenticate a user with email and password.
-        
-        Args:
-            db: Database session
-            email: User's email
-            password: Plain text password
-            
-        Returns:
-            User object if authentication successful, None otherwise
-        """
-        from app.core.security import verify_password
-        
-        user = self.get_by_email(db, email=email)
-        if not user:
-            return None
-        if not verify_password(password, user.hashed_password):
-            return None
-        return user
+    )
+    return result.scalar_one_or_none()
 
 
-# Create a single instance to be imported and used throughout the app
-crud_user = CRUDUser()
+async def get_user_by_oauth_id(
+    session: AsyncSession,
+    provider: str,
+    oauth_id: str
+) -> Optional[User]:
+    """Get user by OAuth provider ID"""
+    if provider == "google":
+        result = await session.execute(select(User).where(User.google_id == oauth_id))
+    elif provider == "facebook":
+        result = await session.execute(select(User).where(User.facebook_id == oauth_id))
+    elif provider == "apple":
+        result = await session.execute(select(User).where(User.apple_id == oauth_id))
+    else:
+        return None
+    
+    return result.scalar_one_or_none()
+
+
+async def create_user(
+    session: AsyncSession,
+    email: str,
+    username: str,
+    password: Optional[str] = None,
+    **kwargs
+) -> User:
+    """Create a new user"""
+    user = User(
+        email=email,
+        username=username,
+        hashed_password=get_password_hash(password) if password else None,
+        **kwargs
+    )
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+async def update_user(
+    session: AsyncSession,
+    user_id: UUID,
+    **update_data
+) -> Optional[User]:
+    """Update user information"""
+    user = await get_user_by_id(session, user_id)
+    if not user:
+        return None
+    
+    # If password is being updated, hash it
+    if "password" in update_data and update_data["password"]:
+        update_data["hashed_password"] = get_password_hash(update_data.pop("password"))
+    
+    for key, value in update_data.items():
+        if hasattr(user, key) and value is not None:
+            setattr(user, key, value)
+    
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+async def authenticate_user(
+    session: AsyncSession,
+    identifier: str,
+    password: str
+) -> Optional[User]:
+    """Authenticate user with email/username and password"""
+    user = await get_user_by_email_or_username(session, identifier)
+    if not user:
+        return None
+    if not user.hashed_password:
+        return None  # For OAuth user
+    if not verify_password(password, user.hashed_password):
+        return None
+    if not user.is_active:
+        return None
+    return user
+
+
+async def deactivate_user(session: AsyncSession, user_id: UUID) -> Optional[User]:
+    """Deactivate user account"""
+    user = await get_user_by_id(session, user_id)
+    if not user:
+        return None
+    
+    user.is_active = False
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+async def activate_user(session: AsyncSession, user_id: UUID) -> Optional[User]:
+    """Activate user account"""
+    user = await get_user_by_id(session, user_id)
+    if not user:
+        return None
+    
+    user.is_active = True
+    await session.commit()
+    await session.refresh(user)
+    return user

@@ -197,10 +197,17 @@ uv pip install -e ".[dev]"
 #Pour ajouter rapidement des trucs
 uv pip install requests
 
+Après avoir copié le fichier .env, **vous devez le remplir** avec vos propres configurations (voir section suivante).
+
+#Lancer Redis + Postgres
+docker run -d --name omnilog_db -e POSTGRES_USER=omnilog_user -e POSTGRES_PASSWORD=omnilog_password -e POSTGRES_DB=omnilog_db -p 5432:5432 postgres:15-alpine
+
+docker run -d --name omnilog_redis -p 6379:6379 redis:7-alpine
+
 # Copier le fichier d'environnement  
 cp .env.example .env
 
-Après avoir copié le fichier .env, **vous devez le remplir** avec vos propres configurations (voir section suivante).
+alembic upgrade head
 
 # Lancer le serveur avec rechargement automatique  
 uvicorn app.main:app --reload
@@ -217,18 +224,51 @@ Le fichier .env est utilisé pour configurer l'application. Il est chargé au d�
 ```json
 # .env
 
-# Configuration de la base de données (exemple PostgreSQL)  
-# Format: "postgresql+asyncpg://USER:PASSWORD@HOST:PORT/DB_NAME"  
-DATABASE_URL="postgresql+asyncpg://omnilog_user:secret_password@localhost:5432/omnilog_db"
-
-# Sécurité (JWT)  
-# Générer une clé secrète forte (ex: openssl rand -hex 32)  
-JWT_SECRET_KEY="votre_cle_secrete_tres_tres_longue_de_32_octets"  
-JWT_ALGORITHM="HS256"  
-ACCESS_TOKEN_EXPIRE_MINUTES=60
-
-# Mode debug de l'application  
+# Application Settings
 DEBUG=True
+PROJECT_NAME="Omnilog API"
+VERSION="1.0.0"
+
+# Database Configuration
+# Format: postgresql+asyncpg://username:password@host:port/database
+DATABASE_URL=postgresql+asyncpg://omnilog_user:your_password@localhost:5432/omnilog_db
+
+# Redis Configuration
+REDIS_URL=redis://localhost:6379/0
+REDIS_CACHE_TTL=3600
+
+# Security / JWT
+# Generate a secret key: openssl rand -hex 32
+SECRET_KEY=your_super_secret_key_here_change_this_in_production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=1440
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# TMDB API
+TMDB_API_KEY=your_tmdb_api_key_here
+TMDB_BASE_URL=https://api.themoviedb.org/3
+TMDB_IMAGE_BASE_URL=https://image.tmdb.org/t/p
+
+# OAuth - Google (Optional)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=http://localhost:8000/api/v1/auth/google/callback
+
+# OAuth - Facebook (Optional)
+FACEBOOK_CLIENT_ID=
+FACEBOOK_CLIENT_SECRET=
+FACEBOOK_REDIRECT_URI=http://localhost:8000/api/v1/auth/facebook/callback
+
+# OAuth - Apple (Optional)
+APPLE_CLIENT_ID=
+APPLE_CLIENT_SECRET=
+APPLE_REDIRECT_URI=http://localhost:8000/api/v1/auth/apple/callback
+
+# CORS Origins (comma-separated)
+CORS_ORIGINS=["http://localhost:3000","http://localhost:5173","http://localhost:8080"]
+
+# Cache Settings
+TOP_MOVIES_CACHE_SIZE=500
 ```
 
 ## **📜 Scripts et Commandes**
@@ -237,57 +277,84 @@ DEBUG=True
 | --- | --- |
 | ``uvicorn app.main:app --reload`` | Lance le serveur de développement (auto-reload) |  
 | ``pytest`` | Lance la suite de tests unitaires et d'intégration |  
+| ``pytest --cov=app tests/`` | Lance la suite de tests avec coverage |  
 | ``alembic upgrade head`` | Applique les dernières migrations à la base de données |  
-| ``alembic revision --autogenerate -m "..."`` | Crée un nouveau fichier de migration basé sur les modèles |
+| ``alembic revision --autogenerate -m "description"`` | Crée un nouveau fichier de migration basé sur les modèles |
+| ``alembic dowgrade -1`` | Rollback |
 
 
 ## **🏗️ Architecture du projet**
 
 ```
-omnilog-backend/  
-├── alembic/                    # Fichiers de migration Alembic  
-│   ├── versions/               # Fichiers de migration auto-générés  
-│   └── env.py                  # Configuration d'exécution d'Alembic  
-├── app/                        # Cœur de l'application FastAPI  
-│   ├── __init__.py  
-│   ├── api/                    # Routers et endpoints de l'API  
-│   │   ├── __init__.py  
-│   │   └── v1/                 # Version 1 de l'API  
-│   │       ├── __init__.py  
-│   │       ├── endpoints/      # Fichiers par ressource (auth.py, users.py)  
-│   │       └── router.py       # Agrégation des routers v1  
-│   ├── core/                   # Configuration et sécurité  
-│   │   ├── __init__.py  
-│   │   ├── config.py           # Chargement du .env (Pydantic Settings)  
-│   │   └── security.py         # Gestion JWT, hash de mots de passe  
-│   ├── crud/                   # Fonctions CRUD (logique base de données)  
-│   │   ├── __init__.py  
-│   │   └── crud_user.py  
-│   ├── db/                     # Session et modèles SQLAlchemy  
-│   │   ├── __init__.py  
-│   │   ├── base.py             # Classe de base déclarative (Base)  
-│   │   ├── models.py           # Modèles SQLAlchemy (tables)  
-│   │   └── session.py          # Gestion de la session (dépendance)  
-│   ├── schemas/                # Modèles Pydantic (validation des données)  
-│   │   ├── __init__.py  
-│   │   ├── token.py  
-│   │   └── user.py             # Schémas UserCreate, UserRead, etc.  
-│   ├── services/               # Logique métier complexe  
-│   │   ├── __init__.py  
-│   │   └── auth_service.py  
-│   └── main.py                 # Point d'entrée de l'app (FastAPI factory)  
-├── tests/                      # Tests Pytest  
-│   ├── __init__.py  
-│   ├── api/                    # Tests par endpoint  
-│   │   └── test_auth.py  
-│   ├── crud/                   # Tests des fonctions CRUD  
-│   └── conftest.py             # Fixtures Pytest (TestClient, session DB)  
-├── .env.example                # Fichier d'exemple pour l'environnement  
-├── .gitignore  
-├── alembic.ini                 # Configuration générale d'Alembic  
-├── requirements.txt            # Dépendances Python  
-├── pyproject.toml              # Configuration Black, Ruff, Pytest  
-└── README.md
+omnilog-backend/
+├── .env.example
+├── .gitignore
+├── .gitlab-ci.yml
+├── .python-version
+├── Dockerfile
+├── README.md
+├── alembic.ini
+├── docker-compose.yml
+├── pyproject.toml
+│
+├── alembic/
+│   ├── env.py
+│   ├── script.py.mako
+│   └── versions/
+│
+├── app/
+│   ├── __init__.py
+│   ├── main.py
+│   │
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── router.py
+│   │   └── endpoints/
+│   │       ├── __init__.py
+│   │       ├── auth.py          # Register, login, refresh token
+│   │       ├── users.py         # User profile management
+│   │       ├── media.py         # Media search & details
+│   │       └── library.py       # Progress tracking
+│   │
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── config.py            # Settings & environment variables
+│   │   ├── security.py          # JWT & password hashing
+│   │   └── deps.py              # FastAPI dependencies
+│   │
+│   ├── crud/
+│   │   ├── __init__.py
+│   │   ├── crud_user.py         # User database operations
+│   │   └── crud_media.py        # Media database operations
+│   │
+│   ├── db/
+│   │   ├── __init__.py
+│   │   ├── base.py              # SQLModel base
+│   │   ├── models.py            # Database models
+│   │   └── session.py           # Database session
+│   │
+│   ├── schemas/
+│   │   ├── __init__.py
+│   │   ├── user.py              # User Pydantic schemas
+│   │   ├── media.py             # Media Pydantic schemas
+│   │   └── token.py             # Auth token schemas
+│   │
+│   └── services/
+│       ├── __init__.py
+│       ├── auth_service.py      # OAuth
+│       ├── tmdb_service.py      # TMDB API integration
+│       └── redis_service.py     # Redis caching
+│
+└── tests/
+    ├── conftest.py              # Test fixtures
+    └── api/
+        └── test_auth.py         # Authentication tests
+```
+
+```
+FastAPI → PostgreSQL (async) → SQLModel ORM
+       → Redis → Caching
+       → TMDB API → Media data
 ```
 
 ## **🛠️ Technologies utilisées**
@@ -340,38 +407,11 @@ Les tests sont écrits avec Pytest et se trouvent dans le dossier tests/. Ils ut
 
 ### **Lancer les tests**
 
+```bash
+pytest #sans coverage
+pytest --cov=app tests/ #avec coverage
 ```
-pytest
-```
 
-**Exemple de test (Pytest) :**
-
-```py
-# tests/api/test_auth.py  
-from fastapi.testclient import TestClient  
-from app.main import app
-
-client = TestClient(app)
-
-def test_login_success():  
-    # Note : Nécessite une fixture pour créer un utilisateur au préalable  
-    response = client.post(  
-        "/api/v1/auth/token",  
-        data={"username": "testuser@example.com", "password": "testpassword"}  
-    )  
-    assert response.status_code == 200  
-    data = response.json()  
-    assert "access_token" in data  
-    assert data["token_type"] == "bearer"
-
-def test_login_invalid_password():  
-    response = client.post(  
-        "/api/v1/auth/token",  
-        data={"username": "testuser@example.com", "password": "wrongpassword"}  
-    )  
-    assert response.status_code == 401  
-    assert response.json() == {"detail": "Incorrect username or password"}
-```
 
 ## **📚 Documentation de l'API**
 
@@ -382,4 +422,4 @@ FastAPI génère automatiquement une documentation interactive de l'API. Une foi
 * Documentation ReDoc :  
   http://localhost:8000/redoc
 
-Cette documentation est générée à partir de vos endpoints, des modèles Pydantic et des docstrings.
+Cette documentation est générée à partir des endpoints, des modèles Pydantic et des docstrings.

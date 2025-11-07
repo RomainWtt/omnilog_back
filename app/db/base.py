@@ -1,4 +1,3 @@
-from app.db.models import User, Media, Review, Friendship, UserMediaEntry
+from sqlmodel import SQLModel
 
-# Import pour Alembic (auto-gen ?)
-__all__ = ["User", "Media", "Review", "Friendship", "UserMediaEntry"]
+Base = SQLModel
