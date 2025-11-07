@@ -47,6 +47,7 @@ deploy:
   stage: deploy
   image: alpine:latest
   before_script:
+    - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASSWORD
     - apk add --no-cache openssh-client
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
