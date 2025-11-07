@@ -73,9 +73,11 @@ deploy:
     - ssh production "
         cd /opt/omnilog/backend/omnilog-backend &&
         docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        echo \"$DOCKER_HUB_PASSWORD\" | docker login -u \"$DOCKER_HUB_USER\" --password-stdin &&
         docker compose pull api &&
         docker compose up -d api &&
         docker compose exec -T api alembic upgrade head &&
+        docker logout $CI_REGISTRY && 
         docker logout
       "
   environment:
