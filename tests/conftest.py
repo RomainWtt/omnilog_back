@@ -5,6 +5,7 @@ from httpx import AsyncClient, ASGITransport
 from sqlmodel import SQLModel
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
+from unittest.mock import AsyncMock, patch
 
 from app.main import app
 from app.db.session import get_session
@@ -53,17 +54,22 @@ async def session() -> AsyncGenerator[AsyncSession, None]:
 
 @pytest.fixture(scope="function")
 async def client(session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """Create test client"""
+    """Create test client with mocked Redis"""
     async def override_get_session():
         yield session
     
     app.dependency_overrides[get_session] = override_get_session
     
-    async with AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test"
-    ) as client:
-        yield client
+    # Mock Redis service to avoid connection errors in tests
+    with patch('app.services.redis_service.redis_service.get_top_movies', 
+               new_callable=AsyncMock, return_value=None):
+        with patch('app.services.redis_service.redis_service.set_top_movies',
+                   new_callable=AsyncMock, return_value=True):
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test"
+            ) as client:
+                yield client
     
     app.dependency_overrides.clear()
 
