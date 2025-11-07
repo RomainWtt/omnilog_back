@@ -81,6 +81,16 @@ async def search_media(
             
             if not existing_media:
                 # Create media entry
+                # Parse date string to date object
+                release_date_str = item.get("release_date") or item.get("first_air_date")
+                release_date = None
+                if release_date_str:
+                    try:
+                        from datetime import datetime
+                        release_date = datetime.strptime(release_date_str, "%Y-%m-%d").date()
+                    except (ValueError, TypeError):
+                        release_date = None
+                
                 media_data = {
                     "tmdb_id": item["id"],
                     "media_type": MediaType(media_type_value),
@@ -89,7 +99,7 @@ async def search_media(
                     "overview": item.get("overview"),
                     "poster_path": item.get("poster_path"),
                     "backdrop_path": item.get("backdrop_path"),
-                    "release_date": item.get("release_date") or item.get("first_air_date"),
+                    "release_date": release_date,
                     "popularity": item.get("popularity"),
                     "vote_average": item.get("vote_average"),
                     "vote_count": item.get("vote_count"),
@@ -186,6 +196,16 @@ async def get_media_by_tmdb_id(
             tmdb_data = await tmdb_service.get_tv_details(tmdb_id)
         
         # Create media entry
+        # Parse date string to date object
+        release_date_str = tmdb_data.get("release_date") or tmdb_data.get("first_air_date")
+        release_date = None
+        if release_date_str:
+            try:
+                from datetime import datetime
+                release_date = datetime.strptime(release_date_str, "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                release_date = None
+        
         media_data = {
             "tmdb_id": tmdb_id,
             "media_type": media_type,
@@ -194,7 +214,7 @@ async def get_media_by_tmdb_id(
             "overview": tmdb_data.get("overview"),
             "poster_path": tmdb_data.get("poster_path"),
             "backdrop_path": tmdb_data.get("backdrop_path"),
-            "release_date": tmdb_data.get("release_date") or tmdb_data.get("first_air_date"),
+            "release_date": release_date,
             "runtime": tmdb_data.get("runtime"),
             "number_of_seasons": tmdb_data.get("number_of_seasons"),
             "number_of_episodes": tmdb_data.get("number_of_episodes"),
