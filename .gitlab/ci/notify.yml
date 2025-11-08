@@ -40,9 +40,9 @@ discord:test-notification:
       COVERAGE="N/A"
       if [ -f "htmlcov/index.html" ]; then
         echo "✅ Fichier htmlcov/index.html trouvé"
-        # Chercher le coverage total - méthode simple avec sed
-        COVERAGE=$(sed -n 's/.*Total.*\([0-9]\{1,3\}\)%.*/\1/p' htmlcov/index.html | tail -1)
-        if [ -n "$COVERAGE" ]; then
+        # Extraire toutes les occurrences de nombres suivis de % et prendre le dernier
+        COVERAGE=$(grep -o '[0-9]\+%' htmlcov/index.html | tail -1 | sed 's/%//')
+        if [ -n "$COVERAGE" ] && [ "$COVERAGE" != "" ]; then
           echo "📊 Coverage extrait: ${COVERAGE}%"
         else
           echo "⚠️ Impossible d'extraire le coverage"
