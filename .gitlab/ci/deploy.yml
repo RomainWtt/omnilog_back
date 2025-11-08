@@ -1,0 +1,69 @@
+# Stage: Deploy
+# Déploiement en production sur le VPS
+
+deploy:production:
+  stage: deploy
+  extends: .main-only
+  image: alpine:latest
+  needs:
+    - job: build:docker
+      artifacts: true
+  before_script:
+    - echo "🔐 Configuration SSH..."
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo "$SSH_PRIVATE_KEY_BASE64" | base64 -d > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - |
+      cat > ~/.ssh/config <<EOF
+      Host production
+        HostName $DEPLOY_SERVER
+        User $DEPLOY_USER
+        IdentityFile ~/.ssh/id_ed25519
+        StrictHostKeyChecking no
+        UserKnownHostsFile /dev/null
+        ServerAliveInterval 60
+        ServerAliveCountMax 3
+      EOF
+    - chmod 600 ~/.ssh/config
+  script:
+    - |
+      echo "🚀 Déploiement sur le serveur de production..."
+      
+      ssh production "
+        cd /opt/omnilog/backend/omnilog-backend &&
+        echo '🔐 Connexion aux registres Docker...' &&
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        echo \"$DOCKER_HUB_PASSWORD\" | docker login -u \"$DOCKER_HUB_USER\" --password-stdin &&
+        
+        echo '📥 Pull de la nouvelle image...' &&
+        docker compose pull api &&
+        
+        echo '🔄 Redémarrage du conteneur...' &&
+        docker compose up -d api &&
+        
+        echo '📊 Migration de la base de données...' &&
+        docker compose exec -T api alembic upgrade head &&
+        
+        echo '🧹 Nettoyage...' &&
+        docker logout $CI_REGISTRY && 
+        docker logout &&
+        
+        echo '✅ Déploiement terminé avec succès'
+      "
+      
+      echo "deploy_status=success" >> $PIPELINE_STATUS_FILE
+  after_script:
+    - |
+      if [ $CI_JOB_STATUS != "success" ]; then
+        echo "deploy_status=failed" >> $PIPELINE_STATUS_FILE
+      fi
+  artifacts:
+    when: always
+    paths:
+      - $PIPELINE_STATUS_FILE
+    expire_in: 1 day
+  environment:
+    name: production
+    url: https://omnilog-api.mathdesigns.dev

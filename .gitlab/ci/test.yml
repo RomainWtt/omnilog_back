@@ -1,0 +1,35 @@
+# Stage: Test
+# Tests unitaires avec pytest
+
+test:unit:
+  stage: test
+  extends: .develop-main-mr
+  image: python:3.11-slim
+  variables:
+    SECRET_KEY: "dummy-secret-key-for-ci-tests"
+    TMDB_API_KEY: "dummy-tmdb-key"
+    DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+  before_script:
+    - pip install -e ".[dev]"
+  script:
+    - |
+      echo "🧪 Exécution des tests unitaires..."
+      
+      if pytest tests/ -v --tb=short --junitxml=report.xml --cov=. --cov-report=term --cov-report=html; then
+        echo "tests_status=passed" >> $PIPELINE_STATUS_FILE
+        echo "✅ Tests unitaires réussis"
+      else
+        echo "tests_status=failed" >> $PIPELINE_STATUS_FILE
+        echo "❌ Tests unitaires échoués"
+        exit 1
+      fi
+  artifacts:
+    when: always
+    paths:
+      - $PIPELINE_STATUS_FILE
+      - htmlcov/
+      - report.xml
+    reports:
+      junit: report.xml
+    expire_in: 1 week
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
