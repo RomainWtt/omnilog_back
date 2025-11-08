@@ -39,18 +39,9 @@ discord:test-notification:
       # Extraction du coverage
       COVERAGE="N/A"
       if [ -f "htmlcov/index.html" ]; then
-        echo "✅ Fichier htmlcov/index.html trouvé"
         # Extraire toutes les occurrences de nombres suivis de % et prendre le dernier
         COVERAGE=$(grep -o '[0-9]\+%' htmlcov/index.html | tail -1 | sed 's/%//')
-        if [ -n "$COVERAGE" ] && [ "$COVERAGE" != "" ]; then
-          echo "📊 Coverage extrait: ${COVERAGE}%"
-        else
-          echo "⚠️ Impossible d'extraire le coverage"
-          COVERAGE="N/A"
-        fi
-      else
-        echo "❌ Fichier htmlcov/index.html introuvable"
-        ls -la htmlcov/ || echo "Le dossier htmlcov/ n'existe pas"
+        [ -z "$COVERAGE" ] && COVERAGE="N/A"
       fi
       
       # Statut et couleur
