@@ -40,7 +40,7 @@ discord:test-notification:
       COVERAGE="N/A"
       if [ -f "htmlcov/index.html" ]; then
         # Chercher le coverage total dans le fichier (format: Total...62%)
-        COVERAGE=$(grep -oP 'Total.*?\K\d+(?=%)' htmlcov/index.html | tail -1 || echo "N/A")
+        COVERAGE=$(grep 'Total' htmlcov/index.html | grep -o '[0-9]\+%' | tail -1 | tr -d '%' || echo "N/A")
         [ -z "$COVERAGE" ] && COVERAGE="N/A"
       fi
       
