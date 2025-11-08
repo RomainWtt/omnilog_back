@@ -39,9 +39,18 @@ discord:test-notification:
       # Extraction du coverage
       COVERAGE="N/A"
       if [ -f "htmlcov/index.html" ]; then
-        # Chercher le coverage total dans le fichier (format: Total...62%)
-        COVERAGE=$(grep 'Total' htmlcov/index.html | grep -o '[0-9]\+%' | tail -1 | tr -d '%' || echo "N/A")
-        [ -z "$COVERAGE" ] && COVERAGE="N/A"
+        echo "✅ Fichier htmlcov/index.html trouvé"
+        # Chercher le coverage total - méthode simple avec sed
+        COVERAGE=$(sed -n 's/.*Total.*\([0-9]\{1,3\}\)%.*/\1/p' htmlcov/index.html | tail -1)
+        if [ -n "$COVERAGE" ]; then
+          echo "📊 Coverage extrait: ${COVERAGE}%"
+        else
+          echo "⚠️ Impossible d'extraire le coverage"
+          COVERAGE="N/A"
+        fi
+      else
+        echo "❌ Fichier htmlcov/index.html introuvable"
+        ls -la htmlcov/ || echo "Le dossier htmlcov/ n'existe pas"
       fi
       
       # Statut et couleur
