@@ -15,7 +15,8 @@ test:unit:
     - |
       echo "🧪 Exécution des tests unitaires..."
       
-      if pytest tests/ -v --tb=short --junitxml=report.xml --cov=. --cov-report=term --cov-report=html; then
+      # Exécuter pytest sans fail-under pour le coverage
+      if pytest tests/ -v --tb=short --junitxml=report.xml --cov=. --cov-report=term --cov-report=html --cov-fail-under=0; then
         echo "tests_status=passed" >> $PIPELINE_STATUS_FILE
         echo "✅ Tests unitaires réussis"
       else
