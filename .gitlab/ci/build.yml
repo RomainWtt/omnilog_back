@@ -1,0 +1,36 @@
+# Stage: Build
+# Construction et push de l'image Docker
+
+build:docker:
+  stage: build
+  extends: .main-only
+  image: docker:24
+  services:
+    - name: docker:24-dind
+      command: ["--registry-mirror", "https://mirror.gcr.io"]
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
+  before_script:
+    - echo "🐳 Connexion aux registres Docker..."
+    - echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USER" --password-stdin
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - |
+      echo "🏗️ Construction de l'image Docker..."
+      docker build -t $DOCKER_IMAGE -t $DOCKER_IMAGE_LATEST .
+      
+      echo "📤 Push de l'image vers les registres..."
+      docker push $DOCKER_IMAGE
+      docker push $DOCKER_IMAGE_LATEST
+      
+      echo "build_status=success" >> $PIPELINE_STATUS_FILE
+      echo "✅ Image Docker construite et poussée avec succès"
+  after_script:
+    - docker logout
+    - docker logout $CI_REGISTRY
+  artifacts:
+    when: always
+    paths:
+      - $PIPELINE_STATUS_FILE
+    expire_in: 1 day

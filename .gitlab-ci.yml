@@ -2,86 +2,36 @@ stages:
   - test
   - build
   - deploy
+  - notify
 
 variables:
   DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
   DOCKER_IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
+  PIPELINE_STATUS_FILE: pipeline-status.txt
 
-# Test stage - runs on develop and main
-test:
-  stage: test
-  image: python:3.11-slim
-  variables:
-    SECRET_KEY: "dummy-secret-key-for-ci-tests"
-    TMDB_API_KEY: "dummy-tmdb-key"
-    DATABASE_URL: "sqlite+aiosqlite:///./test.db"
-  before_script:
-    - pip install -e ".[dev]"
-  script:
-    - pytest tests/ -v --tb=short
-  only:
-    - develop
-    - main
-    - merge_requests
+# Règles de conditions réutilisables
+.develop-only:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
 
-# Build Docker image - only on main
-build:
-  stage: build
-  image: docker:24
-  services:
-    - name: docker:24-dind
-      command: ["--registry-mirror", "https://mirror.gcr.io"]
-  variables:
-    DOCKER_TLS_CERTDIR: ""
-    DOCKER_DRIVER: overlay2
-  before_script:
-    - echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USER" --password-stdin
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-  script:
-    - docker build -t $DOCKER_IMAGE -t $DOCKER_IMAGE_LATEST .
-    - docker push $DOCKER_IMAGE
-    - docker push $DOCKER_IMAGE_LATEST
-  after_script:
-    - docker logout
-  only:
-    - main
+.main-only:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
 
-# Deploy - only on main
-deploy:
-  stage: deploy
-  image: alpine:latest
-  before_script:
-    - apk add --no-cache openssh-client
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-    - echo "$SSH_PRIVATE_KEY_BASE64" | base64 -d > ~/.ssh/id_ed25519
-    - chmod 600 ~/.ssh/id_ed25519
-    - |
-      cat > ~/.ssh/config <<EOF
-      Host production
-        HostName $DEPLOY_SERVER
-        User $DEPLOY_USER
-        IdentityFile ~/.ssh/id_ed25519
-        StrictHostKeyChecking no
-        UserKnownHostsFile /dev/null
-        ServerAliveInterval 60
-        ServerAliveCountMax 3
-      EOF
-    - chmod 600 ~/.ssh/config
+.develop-and-main:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH == "main"
 
-  script:
-    - ssh production "
-        cd /opt/omnilog/backend/omnilog-backend &&
-        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
-        echo \"$DOCKER_HUB_PASSWORD\" | docker login -u \"$DOCKER_HUB_USER\" --password-stdin &&
-        docker compose pull api &&
-        docker compose up -d api &&
-        docker compose exec -T api alembic upgrade head &&
-        docker logout $CI_REGISTRY && 
-        docker logout
-      "
-  environment:
-    name: production
-    url: https://omnilog-api.mathdesigns.dev
-  only:
-    - main
+.develop-main-mr:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# Inclusion des jobs
+include:
+  - local: '.gitlab/ci/test.yml'
+  - local: '.gitlab/ci/build.yml'
+  - local: '.gitlab/ci/deploy.yml'
+  - local: '.gitlab/ci/notify.yml'
