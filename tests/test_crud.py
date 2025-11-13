@@ -23,7 +23,6 @@ async def test_create_user(session: AsyncSession):
 @pytest.mark.asyncio
 async def test_get_user_by_email(session: AsyncSession):
     """Test retrieving user by email"""
-    # Create user
     await crud_user.create_user(
         session=session,
         email="get@example.com",
@@ -31,7 +30,6 @@ async def test_get_user_by_email(session: AsyncSession):
         password="TestPass123"
     )
     
-    # Retrieve user
     user = await crud_user.get_user_by_email(session, "get@example.com")
     
     assert user is not None
@@ -148,7 +146,6 @@ async def test_get_media_by_tmdb_id(session: AsyncSession):
 @pytest.mark.asyncio
 async def test_search_media_by_title(session: AsyncSession):
     """Test searching media by title"""
-    # Create multiple media
     await crud_media.create_media(
         session=session,
         tmdb_id=100,
@@ -169,8 +166,7 @@ async def test_search_media_by_title(session: AsyncSession):
 
 @pytest.mark.asyncio
 async def test_create_user_media_entry(session: AsyncSession):
-    """Test creating user media entry"""
-    # Create user and media
+    """Test creating user media entry - REMOVED progress field"""
     user = await crud_user.create_user(
         session=session,
         email="entry@example.com",
@@ -189,17 +185,17 @@ async def test_create_user_media_entry(session: AsyncSession):
         user_id=user.id,
         media_id=media.id,
         list_status="watching",
-        progress=50
+        timecode=3000  # Use timecode instead of progress
     )
     
     assert entry.user_id == user.id
     assert entry.media_id == media.id
-    assert entry.progress == 50
+    assert entry.timecode == 3000
 
 
 @pytest.mark.asyncio
 async def test_update_user_media_entry(session: AsyncSession):
-    """Test updating user media entry"""
+    """Test updating user media entry - REMOVED progress field"""
     user = await crud_user.create_user(
         session=session,
         email="updateentry@example.com",
@@ -219,19 +215,19 @@ async def test_update_user_media_entry(session: AsyncSession):
         user_id=user.id,
         media_id=media.id,
         list_status="watching",
-        progress=0
+        timecode=0
     )
     
-    # Update entry
+    # Update entry - use timecode instead of progress
     updated = await crud_media.update_user_media_entry(
         session=session,
         user_id=user.id,
         media_id=media.id,
-        progress=75,
+        timecode=4500,
         score=8
     )
     
-    assert updated.progress == 75
+    assert updated.timecode == 4500
     assert updated.score == 8
 
 

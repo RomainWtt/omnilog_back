@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.api.router import api_router
 from app.db.session import init_db
 from app.services.redis_service import redis_service
+from fastapi.routing import APIRoute
 
 
 @asynccontextmanager
@@ -44,6 +45,7 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 
+
 @app.get("/")
 async def root():
     """Root endpoint"""
@@ -62,3 +64,10 @@ async def health_check():
         "status": "healthy",
         "version": settings.VERSION
     }
+
+def use_route_names_as_operation_ids(app: FastAPI):
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            route.operation_id = route.name
+
+use_route_names_as_operation_ids(app)
