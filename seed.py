@@ -1,5 +1,5 @@
 """
-Database seeding script for Omnilog backend
+Database seeding script for Omnilog backend (SIMPLIFIED)
 SAFE FOR PRODUCTION - only runs in dev/test environments
 """
 import asyncio
@@ -8,160 +8,143 @@ from datetime import datetime, date, timedelta
 from uuid import uuid4
 from dotenv import load_dotenv
 from sqlmodel import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-# Load .env file FIRST
 load_dotenv()
 
-from app.db.session import async_session_maker
+from app.db.session import async_session_maker, engine
 from app.db.models import (
-    User, Media, MediaType, UserMediaEntry, ListStatus,
+    SQLModel, User, Media, MediaType, Genre, UserMediaEntry, ListStatus,
     Review, Comment, Friendship, FriendshipStatus,
-    Group, GroupType, GroupMembership, Activity, ActivityType
+    Challenge, ChallengeType, ChallengeMembership, Activity, ActivityType,
+    ReviewReport
 )
 from app.core.security import get_password_hash
 
 
-# Environment check
 def is_safe_environment() -> bool:
-    """Check if we're in dev/test environment"""
     env = os.getenv("ENVIRONMENT", "production").lower()
     db_url = os.getenv("DATABASE_URL", "")
-    
-    # Don't run in production
     if env == "production" or "prod" in db_url.lower():
         return False
-    
-    # Allow dev, test, local environments
     return env in ["development", "dev", "test", "testing", "local"]
 
 
-# Seed data
+TMDB_MOVIE_GENRES = [
+    {"id": 28, "name": "Action"},
+    {"id": 12, "name": "Adventure"},
+    {"id": 16, "name": "Animation"},
+    {"id": 35, "name": "Comedy"},
+    {"id": 80, "name": "Crime"},
+    {"id": 99, "name": "Documentary"},
+    {"id": 18, "name": "Drama"},
+    {"id": 10751, "name": "Family"},
+    {"id": 14, "name": "Fantasy"},
+    {"id": 36, "name": "History"},
+    {"id": 27, "name": "Horror"},
+    {"id": 10402, "name": "Music"},
+    {"id": 9648, "name": "Mystery"},
+    {"id": 10749, "name": "Romance"},
+    {"id": 878, "name": "Science Fiction"},
+    {"id": 10770, "name": "TV Movie"},
+    {"id": 53, "name": "Thriller"},
+    {"id": 10752, "name": "War"},
+    {"id": 37, "name": "Western"}
+]
+
+TMDB_TV_GENRES = [
+    {"id": 10759, "name": "Action & Adventure"},
+    {"id": 16, "name": "Animation"},
+    {"id": 35, "name": "Comedy"},
+    {"id": 80, "name": "Crime"},
+    {"id": 99, "name": "Documentary"},
+    {"id": 18, "name": "Drama"},
+    {"id": 10751, "name": "Family"},
+    {"id": 10762, "name": "Kids"},
+    {"id": 9648, "name": "Mystery"},
+    {"id": 10763, "name": "News"},
+    {"id": 10764, "name": "Reality"},
+    {"id": 10765, "name": "Sci-Fi & Fantasy"},
+    {"id": 10766, "name": "Soap"},
+    {"id": 10767, "name": "Talk"},
+    {"id": 10768, "name": "War & Politics"},
+    {"id": 37, "name": "Western"}
+]
+
 SEED_USERS = [
     {
         "username": "admin",
         "email": "admin@omnilog.com",
         "password": "Admin123!",
         "is_admin": True,
+        "is_public": True,
         "birth_date": date(1990, 1, 1)
     },
     {
         "username": "john_doe",
         "email": "john@example.com",
         "password": "User123!",
+        "is_public": True,
         "birth_date": date(1995, 6, 15)
     },
     {
         "username": "jane_smith",
         "email": "jane@example.com",
         "password": "User123!",
+        "is_public": False,
         "birth_date": date(1992, 3, 20)
-    },
-    {
-        "username": "movie_buff",
-        "email": "buff@example.com",
-        "password": "User123!",
-        "birth_date": date(1988, 11, 8)
     }
 ]
 
-SEED_MOVIES = [
-    {
-        "tmdb_id": 550,
-        "media_type": MediaType.MOVIE,
-        "title": "Fight Club",
-        "overview": "A ticking-time-bomb insomniac and a slippery soap salesman channel primal male aggression.",
-        "release_date": date(1999, 10, 15),
-        "runtime": 139,
-        "genres": ["Drama", "Thriller"],
-        "original_language": "en",
-        "popularity": 85.2,
-        "vote_average": 8.4,
-        "vote_count": 28000
-    },
-    {
-        "tmdb_id": 238,
-        "media_type": MediaType.MOVIE,
-        "title": "The Godfather",
-        "overview": "The aging patriarch of an organized crime dynasty transfers control to his reluctant son.",
-        "release_date": date(1972, 3, 24),
-        "runtime": 175,
-        "genres": ["Drama", "Crime"],
-        "original_language": "en",
-        "popularity": 92.1,
-        "vote_average": 8.7,
-        "vote_count": 19000
-    },
-    {
-        "tmdb_id": 680,
-        "media_type": MediaType.MOVIE,
-        "title": "Pulp Fiction",
-        "overview": "The lives of two mob hitmen, a boxer, a gangster and his wife intertwine.",
-        "release_date": date(1994, 10, 14),
-        "runtime": 154,
-        "genres": ["Thriller", "Crime"],
-        "original_language": "en",
-        "popularity": 78.5,
-        "vote_average": 8.5,
-        "vote_count": 27000
-    }
-]
 
-SEED_TV_SHOWS = [
-    {
-        "tmdb_id": 1396,
-        "media_type": MediaType.TV,
-        "title": "Breaking Bad",
-        "overview": "A chemistry teacher diagnosed with cancer turns to cooking meth.",
-        "release_date": date(2008, 1, 20),
-        "number_of_seasons": 5,
-        "number_of_episodes": 62,
-        "episode_run_time": [45, 47],
-        "genres": ["Drama", "Crime", "Thriller"],
-        "original_language": "en",
-        "popularity": 95.3,
-        "vote_average": 9.0,
-        "vote_count": 13000
-    },
-    {
-        "tmdb_id": 1399,
-        "media_type": MediaType.TV,
-        "title": "Game of Thrones",
-        "overview": "Nine noble families fight for control of the lands of Westeros.",
-        "release_date": date(2011, 4, 17),
-        "number_of_seasons": 8,
-        "number_of_episodes": 73,
-        "episode_run_time": [50, 60],
-        "genres": ["Drama", "Fantasy", "Adventure"],
-        "original_language": "en",
-        "popularity": 88.7,
-        "vote_average": 8.3,
-        "vote_count": 22000
-    }
-]
+async def init_db():
+    """Create all tables"""
+    print("🔧 Initializing database schema...")
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+    print("   ✓ Tables created")
 
 
 async def seed_database():
-    """Seed the database with initial data"""
-    
-    # Safety check
     if not is_safe_environment():
-        print("❌ ERROR: Seeding blocked - not in dev/test environment")
-        print("   Current env:", os.getenv("ENVIRONMENT", "production"))
-        print("   DB URL:", os.getenv("DATABASE_URL", "")[:30] + "...")
+        print("❌ ERROR: Not in dev/test environment")
         return False
     
-    print("✅ Safe environment detected - proceeding with seeding...")
+    print("✅ Safe environment detected")
+    
+    # Initialize database schema first
+    await init_db()
     
     async with async_session_maker() as session:
         try:
             # Check if already seeded
             result = await session.execute(select(User).limit(1))
             if result.first():
-                print("⚠️  Database already contains data - skipping seed")
+                print("⚠️  Database already contains users - skipping seed")
                 return True
             
-            print("\n📝 Seeding users...")
+            # 1. Seed genres
+            print("\n🎭 Seeding genres...")
+            for genre_data in TMDB_MOVIE_GENRES:
+                genre = Genre(
+                    id=genre_data["id"],
+                    media_type=MediaType.MOVIE,
+                    name=genre_data["name"]
+                )
+                session.add(genre)
+            
+            for genre_data in TMDB_TV_GENRES:
+                genre = Genre(
+                    id=genre_data["id"],
+                    media_type=MediaType.TV,
+                    name=genre_data["name"]
+                )
+                session.add(genre)
+            
+            await session.commit()
+            print(f"   ✓ {len(TMDB_MOVIE_GENRES)} movie + {len(TMDB_TV_GENRES)} TV genres")
+            
+            # 2. Seed users
+            print("\n👥 Seeding users...")
             users = []
             for user_data in SEED_USERS:
                 password = user_data.pop("password")
@@ -174,189 +157,169 @@ async def seed_database():
                 users.append(user)
             
             await session.commit()
-            print(f"   ✓ Created {len(users)} users")
-            
-            # Refresh to get IDs
             for user in users:
                 await session.refresh(user)
+            print(f"   ✓ {len(users)} users")
             
-            print("\n🎬 Seeding movies...")
-            movies = []
-            for movie_data in SEED_MOVIES:
-                media = Media(**movie_data, id=uuid4())
-                session.add(media)
-                movies.append(media)
-            
-            print("\n📺 Seeding TV shows...")
-            tv_shows = []
-            for tv_data in SEED_TV_SHOWS:
-                media = Media(**tv_data, id=uuid4())
-                session.add(media)
-                tv_shows.append(media)
-            
+            # 3. Seed movie with genre_ids (JSON field)
+            print("\n🎬 Seeding movie...")
+            movie = Media(
+                tmdb_id=550,
+                media_type=MediaType.MOVIE,
+                title="Fight Club",
+                overview="Un employé insomnique crée un club de combat.",
+                release_date=date(1999, 10, 15),
+                runtime=139,
+                genre_ids=[18, 53],  # Drama, Thriller (stored as JSON)
+                original_language="fr-BE"
+            )
+            session.add(movie)
             await session.commit()
-            all_media = movies + tv_shows
-            print(f"   ✓ Created {len(all_media)} media items")
+            await session.refresh(movie)
+            print("   ✓ Movie with genres (JSON)")
             
-            # Refresh media
-            for media in all_media:
-                await session.refresh(media)
+            # 4. Seed TV show with genre_ids (JSON field)
+            print("\n📺 Seeding TV show...")
+            tv = Media(
+                tmdb_id=1396,
+                media_type=MediaType.TV,
+                title="Breaking Bad",
+                overview="Un prof devient dealer.",
+                release_date=date(2008, 1, 20),
+                number_of_seasons=5,
+                number_of_episodes=62,
+                genre_ids=[18, 80],  # Drama, Crime (stored as JSON)
+                original_language="fr-BE"
+            )
+            session.add(tv)
+            await session.commit()
+            await session.refresh(tv)
+            print("   ✓ TV show with genres (JSON)")
             
-            print("\n📚 Creating user media entries...")
-            # User 1 (john) watches Fight Club
-            entry1 = UserMediaEntry(
+            # 5. User media entry
+            print("\n📚 Creating user entries...")
+            entry = UserMediaEntry(
                 user_id=users[1].id,
-                media_id=movies[0].id,
+                media_id=movie.id,
                 list_status=ListStatus.COMPLETED,
-                score=9,
-                is_favorite=True,
-                completed_at=datetime.utcnow() - timedelta(days=5)
+                score=9
             )
-            session.add(entry1)
-            
-            # User 1 watching Breaking Bad
-            entry2 = UserMediaEntry(
-                user_id=users[1].id,
-                media_id=tv_shows[0].id,
-                list_status=ListStatus.WATCHING,
-                current_season=3,
-                current_episode=5,
-                score=10,
-                started_at=datetime.utcnow() - timedelta(days=30)
-            )
-            session.add(entry2)
-            
-            # User 2 (jane) plan to watch Godfather
-            entry3 = UserMediaEntry(
-                user_id=users[2].id,
-                media_id=movies[1].id,
-                list_status=ListStatus.PLAN_TO_WATCH
-            )
-            session.add(entry3)
-            
+            session.add(entry)
             await session.commit()
-            print("   ✓ Created 3 user media entries")
+            print("   ✓ 1 user entry")
             
-            print("\n⭐ Creating reviews...")
-            review1 = Review(
+            # 6. Review
+            print("\n⭐ Creating review...")
+            review = Review(
                 user_id=users[1].id,
-                media_id=movies[0].id,
-                content="An absolute masterpiece! The twist at the end blew my mind.",
+                media_id=movie.id,
+                content="Chef-d'œuvre absolu!",
                 rating=5
             )
-            session.add(review1)
-            
-            review2 = Review(
-                user_id=users[3].id,
-                media_id=movies[1].id,
-                content="The greatest film ever made. Marlon Brando is incredible.",
-                rating=5
-            )
-            session.add(review2)
-            
+            session.add(review)
             await session.commit()
-            print("   ✓ Created 2 reviews")
+            await session.refresh(review)
+            print("   ✓ 1 review")
             
-            print("\n💭 Creating private comments...")
-            comment = Comment(
-                user_id=users[1].id,
-                media_id=tv_shows[0].id,
-                content="Note to self: rewatch the train episode"
+            # 7. Review report
+            print("\n🚨 Creating review report...")
+            report = ReviewReport(
+                reporter_id=users[2].id,
+                reported_user_id=users[1].id,
+                review_id=review.id,
+                reason="Contenu inapproprié"
             )
-            session.add(comment)
+            session.add(report)
             await session.commit()
-            print("   ✓ Created 1 comment")
+            print("   ✓ 1 review report")
             
-            print("\n👥 Creating friendships...")
-            friendship1 = Friendship(
+            # 8. Friendship
+            print("\n👥 Creating friendship...")
+            friendship = Friendship(
                 user_one_id=users[1].id,
                 user_two_id=users[2].id,
                 status=FriendshipStatus.ACCEPTED
             )
-            session.add(friendship1)
-            
-            friendship2 = Friendship(
-                user_one_id=users[1].id,
-                user_two_id=users[3].id,
-                status=FriendshipStatus.PENDING
-            )
-            session.add(friendship2)
-            
+            session.add(friendship)
             await session.commit()
-            print("   ✓ Created 2 friendships")
+            print("   ✓ 1 friendship")
             
-            print("\n🏆 Creating challenge group...")
-            challenge = Group(
-                name="Star Wars Marathon",
-                description="Watch all Star Wars films in chronological order",
-                group_type=GroupType.PUBLIC_COMMUNITY,
+            # 9. Challenge
+            print("\n🏆 Creating challenge...")
+            challenge = Challenge(
+                name="Marathon Star Wars",
+                description="Regarder tous les films Star Wars",
+                challenge_type=ChallengeType.PUBLIC_COMMUNITY,
                 creator_id=users[0].id,
-                is_challenge=True,
                 start_date=datetime.utcnow(),
                 end_date=datetime.utcnow() + timedelta(days=30),
-                media_list=[11, 1891, 1892, 1893, 1894, 1895]  # Star Wars TMDB IDs
+                media_list=[11, 1891, 1892, 1893, 1894, 1895]
             )
             session.add(challenge)
             await session.commit()
             await session.refresh(challenge)
             
-            membership = GroupMembership(
+            membership = ChallengeMembership(
                 user_id=users[1].id,
-                group_id=challenge.id,
-                is_admin=False
+                challenge_id=challenge.id,
+                is_admin=False,
+                progress=2,
+                completed_media=[11, 1891]
             )
             session.add(membership)
             await session.commit()
-            print("   ✓ Created 1 challenge group")
+            print("   ✓ 1 challenge")
             
+            # 10. Activity
             print("\n📊 Creating activities...")
             activity1 = Activity(
                 user_id=users[1].id,
                 activity_type=ActivityType.MEDIA_COMPLETED,
-                details={"media_id": str(movies[0].id), "title": "Fight Club"}
+                details={"media_id": str(movie.id), "title": "Fight Club"}
             )
             session.add(activity1)
             
             activity2 = Activity(
                 user_id=users[1].id,
                 activity_type=ActivityType.REVIEW_POSTED,
-                details={"media_id": str(movies[0].id), "rating": 5}
+                details={"media_id": str(movie.id), "rating": 5}
             )
             session.add(activity2)
             
             await session.commit()
-            print("   ✓ Created 2 activities")
+            print("   ✓ 2 activities")
             
-            print("\n✅ Database seeded successfully!")
-            print("\n📋 Seed Summary:")
+            print("\n✅ Seed complete!")
+            print("\n📋 Summary:")
+            print(f"   • Genres: {len(TMDB_MOVIE_GENRES) + len(TMDB_TV_GENRES)}")
             print(f"   • Users: {len(users)}")
-            print(f"   • Movies: {len(movies)}")
-            print(f"   • TV Shows: {len(tv_shows)}")
-            print(f"   • User Entries: 3")
-            print(f"   • Reviews: 2")
-            print(f"   • Comments: 1")
-            print(f"   • Friendships: 2")
-            print(f"   • Groups: 1")
+            print(f"   • Media: 2 (with genre_ids as JSON)")
+            print(f"   • User entries: 1")
+            print(f"   • Reviews: 1")
+            print(f"   • Review reports: 1")
+            print(f"   • Friendships: 1")
+            print(f"   • Challenges: 1")
             print(f"   • Activities: 2")
             print("\n🔐 Test Credentials:")
-            print("   Admin: admin@omnilog.com / Admin123!")
-            print("   User:  john@example.com / User123!")
+            print("   admin@omnilog.com / Admin123!")
+            print("   john@example.com / User123!")
+            print("\n🌍 Locale: fr-BE")
             
             return True
             
         except Exception as e:
             await session.rollback()
-            print(f"\n❌ Error seeding database: {e}")
+            print(f"\n❌ Error: {e}")
             import traceback
             traceback.print_exc()
             return False
 
 
 async def clear_database():
-    """Clear all data from database (DEV/TEST ONLY)"""
+    """Clear all data (DEV/TEST ONLY)"""
     
     if not is_safe_environment():
-        print("❌ ERROR: Clear blocked - not in dev/test environment")
+        print("❌ ERROR: Not in dev/test environment")
         return False
     
     print("⚠️  WARNING: This will delete ALL data!")
@@ -366,21 +329,15 @@ async def clear_database():
         print("❌ Cancelled")
         return False
     
-    async with async_session_maker() as session:
-        try:
-            from app.db.models import SQLModel
-            from app.db.session import engine
-            
-            async with engine.begin() as conn:
-                await conn.run_sync(SQLModel.metadata.drop_all)
-                await conn.run_sync(SQLModel.metadata.create_all)
-            
-            print("✅ Database cleared successfully")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error clearing database: {e}")
-            return False
+    try:
+        print("🗑️  Dropping all tables...")
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.drop_all)
+        print("✅ Database cleared")
+        return True
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return False
 
 
 if __name__ == "__main__":

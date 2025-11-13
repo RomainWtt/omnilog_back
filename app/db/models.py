@@ -28,10 +28,10 @@ class FriendshipStatus(str, Enum):
     BLOCKED = "blocked"
 
 
-class GroupType(str, Enum):
-    PUBLIC_GLOBAL = "public_global"  # Created by admins
-    PUBLIC_COMMUNITY = "public_community"  # Created by users
-    PRIVATE = "private"  # Invitation only
+class ChallengeType(str, Enum):
+    PUBLIC_GLOBAL = "public_global"
+    PUBLIC_COMMUNITY = "public_community"
+    PRIVATE = "private"
 
 
 class ActivityType(str, Enum):
@@ -41,7 +41,6 @@ class ActivityType(str, Enum):
     REVIEW_POSTED = "review_posted"
     COMMENT_ADDED = "comment_added"
     FRIEND_ADDED = "friend_added"
-    GROUP_JOINED = "group_joined"
     CHALLENGE_JOINED = "challenge_joined"
 
 
@@ -52,23 +51,21 @@ class User(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     username: str = Field(unique=True, index=True, max_length=50)
     email: str = Field(unique=True, index=True, max_length=255)
-    hashed_password: Optional[str] = None  # Optional for OAuth users
+    hashed_password: Optional[str] = None
     avatar_url: Optional[str] = None
     birth_date: Optional[date] = None
     is_active: bool = Field(default=True)
     is_admin: bool = Field(default=False)
+    is_public: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
-    # OAuth providers
     google_id: Optional[str] = Field(default=None, unique=True, index=True)
     facebook_id: Optional[str] = Field(default=None, unique=True, index=True)
     apple_id: Optional[str] = Field(default=None, unique=True, index=True)
     
-    # Social media links
     social_links: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     
-    # Relationships
     media_entries: list["UserMediaEntry"] = Relationship(back_populates="user")
     reviews: list["Review"] = Relationship(back_populates="user")
     comments: list["Comment"] = Relationship(back_populates="user")
@@ -81,8 +78,26 @@ class User(SQLModel, table=True):
         back_populates="user_two",
         sa_relationship_kwargs={"foreign_keys": "Friendship.user_two_id"}
     )
-    group_memberships: list["GroupMembership"] = Relationship(back_populates="user")
-    challenge_participations: list["ChallengeParticipation"] = Relationship(back_populates="user")
+    challenge_memberships: list["ChallengeMembership"] = Relationship(back_populates="user")
+    reported_reviews: list["ReviewReport"] = Relationship(
+        back_populates="reporter",
+        sa_relationship_kwargs={"foreign_keys": "ReviewReport.reporter_id"}
+    )
+    received_reports: list["ReviewReport"] = Relationship(
+        back_populates="reported_user",
+        sa_relationship_kwargs={"foreign_keys": "ReviewReport.reported_user_id"}
+    )
+
+
+class Genre(SQLModel, table=True):
+    """Genre with composite PK - SIMPLIFIED for SQLite"""
+    __tablename__ = "genres"
+    
+    id: int = Field(primary_key=True)
+    media_type: MediaType = Field(primary_key=True)
+    name: str = Field(max_length=100)
+    
+    # Removed relationship - handle manually in code
 
 
 class Media(SQLModel, table=True):
@@ -98,27 +113,23 @@ class Media(SQLModel, table=True):
     backdrop_path: Optional[str] = None
     release_date: Optional[date] = None
     
-    # Movie specific
-    runtime: Optional[int] = None  # In minutes
+    runtime: Optional[int] = None
     
-    # TV specific
     number_of_seasons: Optional[int] = None
     number_of_episodes: Optional[int] = None
     episode_run_time: Optional[list[int]] = Field(default=None, sa_column=Column(JSON))
     
-    # Common
-    genres: Optional[list[str]] = Field(default=None, sa_column=Column(JSON))
+    # Store genre IDs as JSON for simplicity
+    genre_ids: Optional[list[int]] = Field(default=None, sa_column=Column(JSON))
     production_companies: Optional[list[str]] = Field(default=None, sa_column=Column(JSON))
-    original_language: Optional[str] = None
+    original_language: Optional[str] = Field(default="fr-BE")
     popularity: Optional[float] = None
     vote_average: Optional[float] = None
     vote_count: Optional[int] = None
     
-    # Metadata
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
-    # Relationships
     user_entries: list["UserMediaEntry"] = Relationship(back_populates="media")
     reviews: list["Review"] = Relationship(back_populates="media")
     comments: list["Comment"] = Relationship(back_populates="media")
@@ -131,49 +142,61 @@ class UserMediaEntry(SQLModel, table=True):
     media_id: UUID = Field(foreign_key="media.id", primary_key=True)
     list_status: ListStatus = Field(default=ListStatus.PLAN_TO_WATCH)
     
-    # Progress tracking
-    progress: int = Field(default=0)  # Episode number for TV, percentage for movies
-    current_season: Optional[int] = Field(default=None)  # For TV shows
-    current_episode: Optional[int] = Field(default=None)  # For TV shows
-    timecode: Optional[int] = Field(default=0)  # In seconds
+    current_season: Optional[int] = Field(default=None)
+    current_episode: Optional[int] = Field(default=None)
+    timecode: Optional[int] = Field(default=0)
     
-    # Rating
     score: Optional[int] = Field(default=None, ge=0, le=10)
-    
-    # Favorites
     is_favorite: bool = Field(default=False)
     
-    # Timestamps
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
-    # Relationships
     user: User = Relationship(back_populates="media_entries")
     media: Media = Relationship(back_populates="user_entries")
 
 
 class Review(SQLModel, table=True):
-    """Public reviews visible to all users"""
     __tablename__ = "reviews"
     
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key="users.id", index=True)
     media_id: UUID = Field(foreign_key="media.id", index=True)
     content: str = Field(max_length=5000)
-    rating: Optional[int] = Field(default=None, ge=0, le=5)  # 0-5 stars
-    is_visible: bool = Field(default=True)  # For moderation
+    rating: Optional[int] = Field(default=None, ge=0, le=5)
+    is_visible: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
-    # Relationships
     user: User = Relationship(back_populates="reviews")
     media: Media = Relationship(back_populates="reviews")
+    reports: list["ReviewReport"] = Relationship(back_populates="review")
+
+
+class ReviewReport(SQLModel, table=True):
+    __tablename__ = "review_reports"
+    
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    reporter_id: UUID = Field(foreign_key="users.id", index=True)
+    reported_user_id: UUID = Field(foreign_key="users.id", index=True)
+    review_id: UUID = Field(foreign_key="reviews.id", index=True)
+    reason: str = Field(max_length=1000)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    reporter: User = Relationship(
+        back_populates="reported_reviews",
+        sa_relationship_kwargs={"foreign_keys": "[ReviewReport.reporter_id]"}
+    )
+    reported_user: User = Relationship(
+        back_populates="received_reports",
+        sa_relationship_kwargs={"foreign_keys": "[ReviewReport.reported_user_id]"}
+    )
+    review: Review = Relationship(back_populates="reports")
 
 
 class Comment(SQLModel, table=True):
-    """Private personal notes on media"""
     __tablename__ = "comments"
     
     id: UUID = Field(default_factory=uuid4, primary_key=True)
@@ -183,7 +206,6 @@ class Comment(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
-    # Relationships
     user: User = Relationship(back_populates="comments")
     media: Media = Relationship(back_populates="comments")
 
@@ -197,7 +219,6 @@ class Friendship(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
-    # Relationships
     user_one: User = Relationship(
         back_populates="initiated_friendships",
         sa_relationship_kwargs={"foreign_keys": "[Friendship.user_one_id]"}
@@ -208,75 +229,52 @@ class Friendship(SQLModel, table=True):
     )
 
 
-class Group(SQLModel, table=True):
-    """Groups/Challenges"""
-    __tablename__ = "groups"
+class Challenge(SQLModel, table=True):
+    __tablename__ = "challenges"
     
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     name: str = Field(max_length=100, index=True)
     description: Optional[str] = Field(max_length=1000)
-    group_type: GroupType
+    challenge_type: ChallengeType
     avatar_url: Optional[str] = None
     
-    # Challenge specific
-    is_challenge: bool = Field(default=False)
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
-    media_list: Optional[list[int]] = Field(default=None, sa_column=Column(JSON))  # List of TMDB IDs
+    media_list: Optional[list[int]] = Field(default=None, sa_column=Column(JSON))
     
-    # Creator
     creator_id: UUID = Field(foreign_key="users.id", index=True)
     
-    # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
-    # Relationships
-    memberships: list["GroupMembership"] = Relationship(back_populates="group")
+    memberships: list["ChallengeMembership"] = Relationship(back_populates="challenge")
 
 
-class GroupMembership(SQLModel, table=True):
-    """User membership in groups"""
-    __tablename__ = "group_memberships"
+class ChallengeMembership(SQLModel, table=True):
+    __tablename__ = "challenge_memberships"
     
     user_id: UUID = Field(foreign_key="users.id", primary_key=True)
-    group_id: UUID = Field(foreign_key="groups.id", primary_key=True)
+    challenge_id: UUID = Field(foreign_key="challenges.id", primary_key=True)
     is_admin: bool = Field(default=False)
-    joined_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    # Relationships
-    user: User = Relationship(back_populates="group_memberships")
-    group: Group = Relationship(back_populates="memberships")
-
-
-class ChallengeParticipation(SQLModel, table=True):
-    """Track user progress in challenges"""
-    __tablename__ = "challenge_participations"
-    
-    user_id: UUID = Field(foreign_key="users.id", primary_key=True)
-    group_id: UUID = Field(foreign_key="groups.id", primary_key=True)
-    progress: int = Field(default=0)  # Number of media completed
+    progress: int = Field(default=0)
     rank: Optional[int] = None
-    completed_media: Optional[list[int]] = Field(default=None, sa_column=Column(JSON))  # TMDB IDs
+    completed_media: Optional[list[int]] = Field(default=None, sa_column=Column(JSON))
     joined_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
-    # Relationships
-    user: User = Relationship(back_populates="challenge_participations")
+    user: User = Relationship(back_populates="challenge_memberships")
+    challenge: Challenge = Relationship(back_populates="memberships")
 
 
 class Activity(SQLModel, table=True):
-    """User activity tracking for history"""
     __tablename__ = "activities"
     
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key="users.id", index=True)
     activity_type: ActivityType
     
-    # Activity details
     details: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
     
-    # Relationships
     user: User = Relationship(back_populates="activities")

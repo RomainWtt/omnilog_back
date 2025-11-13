@@ -56,7 +56,7 @@ async def add_to_library(
     session: AsyncSession = Depends(get_session)
 ):
     """
-    Add media to user's library or update if already exists
+    Add media to user's library or update if already exists - REMOVED progress
     """
     # Check if media exists
     media = await crud_media.get_media_by_id(session, entry_data.media_id)
@@ -66,13 +66,12 @@ async def add_to_library(
             detail="Media not found"
         )
     
-    # Create or update entry
+    # Create or update entry - REMOVED progress parameter
     entry = await crud_media.create_user_media_entry(
         session=session,
         user_id=current_user.id,
         media_id=entry_data.media_id,
         list_status=entry_data.list_status,
-        progress=entry_data.progress,
         current_season=entry_data.current_season,
         current_episode=entry_data.current_episode,
         timecode=entry_data.timecode,
@@ -115,9 +114,9 @@ async def update_library_entry(
     session: AsyncSession = Depends(get_session)
 ):
     """
-    Update user's library entry for specific media
+    Update user's library entry for specific media - REMOVED progress
     
-    Can update: list_status, progress, season, episode, timecode, score, is_favorite
+    Can update: list_status, season, episode, timecode, score, is_favorite
     """
     # Check if entry exists
     existing_entry = await crud_media.get_user_media_entry(
@@ -152,9 +151,9 @@ async def update_progress(
     session: AsyncSession = Depends(get_session)
 ):
     """
-    Update viewing progress for a media item
+    Update viewing progress for a media item - REMOVED progress field
     
-    For movies: progress (percentage), timecode (seconds)
+    For movies: timecode (seconds)
     For TV shows: season, episode, timecode (seconds)
     """
     # Check if entry exists
@@ -165,25 +164,23 @@ async def update_progress(
     )
     
     if not existing_entry:
-        # Create new entry if doesn't exist
+        # Create new entry if doesn't exist - REMOVED progress parameter
         existing_entry = await crud_media.create_user_media_entry(
             session=session,
             user_id=current_user.id,
             media_id=media_id,
             list_status=ListStatus.WATCHING,
-            progress=progress.progress,
             current_season=progress.current_season,
             current_episode=progress.current_episode,
             timecode=progress.timecode
         )
         return existing_entry
     
-    # Update progress
+    # Update progress - REMOVED progress parameter
     updated_entry = await crud_media.update_user_media_entry(
         session=session,
         user_id=current_user.id,
         media_id=media_id,
-        progress=progress.progress,
         current_season=progress.current_season,
         current_episode=progress.current_episode,
         timecode=progress.timecode,
