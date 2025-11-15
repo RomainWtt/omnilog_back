@@ -158,6 +158,7 @@ class UserMediaEntry(SQLModel, table=True):
     media: Media = Relationship(back_populates="user_entries")
 
 
+
 class Review(SQLModel, table=True):
     __tablename__ = "reviews"
     

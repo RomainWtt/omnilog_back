@@ -3,6 +3,7 @@ from uuid import UUID
 from typing import Optional
 from datetime import date, datetime
 from app.db.models import MediaType, ListStatus
+from app.schemas.genre import GenreRead
 
 
 class MediaBase(BaseModel):
@@ -21,7 +22,7 @@ class MediaCreate(MediaBase):
     number_of_seasons: Optional[int] = None
     number_of_episodes: Optional[int] = None
     episode_run_time: Optional[list[int]] = None
-    genre_ids: Optional[list[int]] = None  # TMDB genre IDs as JSON
+    genre: Optional[list[GenreRead]] = None  # TMDB genre IDs as JSON
     production_companies: Optional[list[str]] = None
     original_language: Optional[str] = None
     popularity: Optional[float] = None
@@ -41,6 +42,7 @@ class MediaRead(MediaBase):
     number_of_episodes: Optional[int] = None
     episode_run_time: Optional[list[int]] = None
     genre_ids: Optional[list[int]] = None  # TMDB genre IDs as JSON
+    genres: Optional[list[GenreRead]] = None
     production_companies: Optional[list[str]] = None
     original_language: Optional[str] = None
     popularity: Optional[float] = None
