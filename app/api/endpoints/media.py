@@ -29,7 +29,6 @@ async def search_media(
         media_type: Optional[MediaType] = Query(None, description="Filter by media type (movie or tv)"),
         page: int = Query(1, ge=1, description="Page number"),
         session: AsyncSession = Depends(get_session),
-        current_user: Optional[User] = Depends(get_optional_current_user)
 ):
     """
     Search for media (movies and TV shows) by title
