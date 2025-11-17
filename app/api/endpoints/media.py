@@ -157,6 +157,23 @@ async def get_media_details(
             else:
                 tmdb_details = await tmdb_service.get_tv_details(media.tmdb_id)
 
+            # Extract actors (top 5 cast members)
+            actors = []
+            if "credits" in tmdb_details and "cast" in tmdb_details["credits"]:
+                actors = [actor["name"] for actor in tmdb_details["credits"]["cast"][:5]]
+            
+            # Extract directors (for movies) or creators (for TV)
+            directors = []
+            if media.media_type == MediaType.MOVIE and "credits" in tmdb_details:
+                if "crew" in tmdb_details["credits"]:
+                    directors = [
+                        crew["name"] for crew in tmdb_details["credits"]["crew"] 
+                        if crew.get("job") == "Director"
+                    ]
+            elif media.media_type == MediaType.TV:
+                if "created_by" in tmdb_details:
+                    directors = [creator["name"] for creator in tmdb_details["created_by"]]
+
             # Update media with full details
             update_data = {
                 "runtime": tmdb_details.get("runtime"),
@@ -165,6 +182,8 @@ async def get_media_details(
                 "episode_run_time": tmdb_details.get("episode_run_time"),
                 "genres": [g["name"] for g in tmdb_details.get("genres", [])],
                 "production_companies": [pc["name"] for pc in tmdb_details.get("production_companies", [])],
+                "actors": actors,
+                "directors": directors,
             }
 
             media = await crud_media.update_media(session, media_id, **update_data)
@@ -211,6 +230,23 @@ async def get_media_by_tmdb_id(
             except (ValueError, TypeError):
                 release_date = None
 
+        # Extract actors (top 5 cast members)
+        actors = []
+        if "credits" in tmdb_data and "cast" in tmdb_data["credits"]:
+            actors = [actor["name"] for actor in tmdb_data["credits"]["cast"][:5]]
+        
+        # Extract directors (for movies) or creators (for TV)
+        directors = []
+        if media_type == MediaType.MOVIE and "credits" in tmdb_data:
+            if "crew" in tmdb_data["credits"]:
+                directors = [
+                    crew["name"] for crew in tmdb_data["credits"]["crew"] 
+                    if crew.get("job") == "Director"
+                ]
+        elif media_type == MediaType.TV:
+            if "created_by" in tmdb_data:
+                directors = [creator["name"] for creator in tmdb_data["created_by"]]
+
         media_data = {
             "tmdb_id": tmdb_id,
             "media_type": media_type,
@@ -226,6 +262,8 @@ async def get_media_by_tmdb_id(
             "episode_run_time": tmdb_data.get("episode_run_time"),
             "genres": [g["name"] for g in tmdb_data.get("genres", [])],
             "production_companies": [pc["name"] for pc in tmdb_data.get("production_companies", [])],
+            "actors": actors,
+            "directors": directors,
             "popularity": tmdb_data.get("popularity"),
             "vote_average": tmdb_data.get("vote_average"),
             "vote_count": tmdb_data.get("vote_count"),

@@ -19,21 +19,21 @@ class UserPublic(BaseModel):
 
 class ReviewBase(BaseModel):
     """Base review schema"""
-    content: str = Field(..., min_length=1, max_length=5000)
-    rating: Optional[int] = Field(None, ge=1, le=5)
+    content: Optional[str] = Field(None, max_length=5000)
+    rating: int = Field(..., ge=1, le=5)
     is_visible: bool = True
 
 
 class ReviewCreate(BaseModel):
     """Schema for creating a review"""
     media_id: UUID
-    content: str = Field(..., min_length=1, max_length=5000)
-    rating: Optional[int] = Field(None, ge=1, le=5)
+    content: Optional[str] = Field(None, max_length=5000)
+    rating: int = Field(..., ge=1, le=5)
 
 
 class ReviewUpdate(BaseModel):
     """Schema for updating a review"""
-    content: Optional[str] = Field(None, min_length=1, max_length=5000)
+    content: Optional[str] = Field(None, max_length=5000)
     rating: Optional[int] = Field(None, ge=1, le=5)
 
 

@@ -14,7 +14,7 @@ load_dotenv()
 from app.db.session import async_session_maker, engine
 from app.db.models import (
     SQLModel, User, Media, MediaType, Genre, UserMediaEntry, ListStatus,
-    Review, Comment, Friendship, FriendshipStatus,
+    Review, Friendship, FriendshipStatus,
     Challenge, ChallengeType, ChallengeMembership, Activity, ActivityType,
     ReviewReport
 )
@@ -171,6 +171,8 @@ async def seed_database():
                 release_date=date(1999, 10, 15),
                 runtime=139,
                 genre_ids=[18, 53],  # Drama, Thriller (stored as JSON)
+                actors=["Brad Pitt", "Edward Norton", "Helena Bonham Carter"],
+                directors=["David Fincher"],
                 original_language="fr-BE"
             )
             session.add(movie)
@@ -189,6 +191,8 @@ async def seed_database():
                 number_of_seasons=5,
                 number_of_episodes=62,
                 genre_ids=[18, 80],  # Drama, Crime (stored as JSON)
+                actors=["Bryan Cranston", "Aaron Paul", "Anna Gunn"],
+                directors=["Vince Gilligan"],
                 original_language="fr-BE"
             )
             session.add(tv)
