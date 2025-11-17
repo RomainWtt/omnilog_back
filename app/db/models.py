@@ -39,7 +39,6 @@ class ActivityType(str, Enum):
     MEDIA_COMPLETED = "media_completed"
     MEDIA_PROGRESS = "media_progress"
     REVIEW_POSTED = "review_posted"
-    COMMENT_ADDED = "comment_added"
     FRIEND_ADDED = "friend_added"
     CHALLENGE_JOINED = "challenge_joined"
 
@@ -68,7 +67,6 @@ class User(SQLModel, table=True):
     
     media_entries: list["UserMediaEntry"] = Relationship(back_populates="user")
     reviews: list["Review"] = Relationship(back_populates="user")
-    comments: list["Comment"] = Relationship(back_populates="user")
     activities: list["Activity"] = Relationship(back_populates="user")
     initiated_friendships: list["Friendship"] = Relationship(
         back_populates="user_one",
@@ -122,6 +120,8 @@ class Media(SQLModel, table=True):
     # Store genre IDs as JSON for simplicity
     genre_ids: Optional[list[int]] = Field(default=None, sa_column=Column(JSON))
     production_companies: Optional[list[str]] = Field(default=None, sa_column=Column(JSON))
+    actors: Optional[list[str]] = Field(default=None, sa_column=Column(JSON))
+    directors: Optional[list[str]] = Field(default=None, sa_column=Column(JSON))
     original_language: Optional[str] = Field(default="fr-BE")
     popularity: Optional[float] = None
     vote_average: Optional[float] = None
@@ -132,7 +132,6 @@ class Media(SQLModel, table=True):
     
     user_entries: list["UserMediaEntry"] = Relationship(back_populates="media")
     reviews: list["Review"] = Relationship(back_populates="media")
-    comments: list["Comment"] = Relationship(back_populates="media")
 
 
 class UserMediaEntry(SQLModel, table=True):
@@ -165,8 +164,8 @@ class Review(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key="users.id", index=True)
     media_id: UUID = Field(foreign_key="media.id", index=True)
-    content: str = Field(max_length=5000)
-    rating: Optional[int] = Field(default=None, ge=0, le=5)
+    content: Optional[str] = Field(default=None, max_length=5000)
+    rating: int = Field(ge=1, le=5)
     is_visible: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -195,20 +194,23 @@ class ReviewReport(SQLModel, table=True):
         sa_relationship_kwargs={"foreign_keys": "[ReviewReport.reported_user_id]"}
     )
     review: Review = Relationship(back_populates="reports")
-
-
-class Comment(SQLModel, table=True):
-    __tablename__ = "comments"
     
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    user_id: UUID = Field(foreign_key="users.id", index=True)
-    media_id: UUID = Field(foreign_key="media.id", index=True)
-    content: str = Field(max_length=5000)
+    reporter_id: UUID = Field(foreign_key="users.id", index=True)
+    reported_user_id: UUID = Field(foreign_key="users.id", index=True)
+    review_id: UUID = Field(foreign_key="reviews.id", index=True)
+    reason: str = Field(max_length=1000)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
     
-    user: User = Relationship(back_populates="comments")
-    media: Media = Relationship(back_populates="comments")
+    reporter: User = Relationship(
+        back_populates="reported_reviews",
+        sa_relationship_kwargs={"foreign_keys": "[ReviewReport.reporter_id]"}
+    )
+    reported_user: User = Relationship(
+        back_populates="received_reports",
+        sa_relationship_kwargs={"foreign_keys": "[ReviewReport.reported_user_id]"}
+    )
+    review: Review = Relationship(back_populates="reports")
 
 
 class Friendship(SQLModel, table=True):

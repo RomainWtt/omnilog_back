@@ -195,8 +195,8 @@ async def create_review(
     """
     Create a new review/comment for a media.
 
-    - **content**: Review text (required, 1-5000 chars)
-    - **rating**: Rating from 1-5 (optional)
+    - **rating**: Rating from 1-5 (required)
+    - **content**: Review text (optional, max 5000 chars)
     - **media_id**: ID of the media being reviewed
 
     Users can only have one review per media.
@@ -218,8 +218,8 @@ async def create_review(
         session=session,
         user_id=current_user.id,
         media_id=review_data.media_id,
-        content=review_data.content,
-        rating=review_data.rating
+        rating=review_data.rating,
+        content=review_data.content
     )
 
     return ReviewRead.model_validate(review)

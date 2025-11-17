@@ -28,8 +28,8 @@ async def test_create_review(session: AsyncSession):
         session=session,
         user_id=user.id,
         media_id=media.id,
-        content="Amazing movie!",
-        rating=5
+        rating=5,
+        content="Amazing movie!"
     )
 
     assert review.content == "Amazing movie!"
@@ -41,8 +41,8 @@ async def test_create_review(session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_create_review_without_rating(session: AsyncSession):
-    """Test creating a review without rating (only comment)"""
+async def test_create_review_without_content(session: AsyncSession):
+    """Test creating a review without content (only rating)"""
     user = await crud_user.create_user(
         session=session,
         email="commenter@example.com",
@@ -60,12 +60,11 @@ async def test_create_review_without_rating(session: AsyncSession):
         session=session,
         user_id=user.id,
         media_id=media.id,
-        content="Great film but no rating yet",
-        rating=None
+        rating=4
     )
 
-    assert review.content == "Great film but no rating yet"
-    assert review.rating is None
+    assert review.content is None
+    assert review.rating == 4
 
 
 @pytest.mark.asyncio
@@ -90,8 +89,8 @@ async def test_get_media_comments(session: AsyncSession):
             session=session,
             user_id=user.id,
             media_id=media.id,
-            content=f"Comment {i}",
-            rating=i + 1
+            rating=i + 1,
+            content=f"Comment {i}"
         )
 
     # Get all comments
@@ -129,6 +128,7 @@ async def test_get_media_comments_pagination(session: AsyncSession):
             session=session,
             user_id=user.id,
             media_id=media.id,
+            rating=((i % 5) + 1),  # Cycle through 1-5
             content=f"Comment {i}"
         )
 
@@ -172,6 +172,7 @@ async def test_get_media_comments_only_visible(session: AsyncSession):
         session=session,
         user_id=user.id,
         media_id=media.id,
+        rating=5,
         content="Visible comment"
     )
 
@@ -180,6 +181,7 @@ async def test_get_media_comments_only_visible(session: AsyncSession):
         session=session,
         user_id=user.id,
         media_id=media.id,
+        rating=3,
         content="Hidden comment"
     )
     # Hide it
@@ -217,6 +219,7 @@ async def test_get_media_comments_with_user_info(session: AsyncSession):
         session=session,
         user_id=user.id,
         media_id=media.id,
+        rating=4,
         content="Comment with user"
     )
 
@@ -253,6 +256,7 @@ async def test_get_media_comments_count(session: AsyncSession):
             session=session,
             user_id=user.id,
             media_id=media.id,
+            rating=((i % 5) + 1),
             content=f"Comment {i}"
         )
 
@@ -262,6 +266,7 @@ async def test_get_media_comments_count(session: AsyncSession):
             session=session,
             user_id=user.id,
             media_id=media.id,
+            rating=3,
             content=f"Hidden {i}"
         )
         review.is_visible = False
@@ -334,8 +339,8 @@ async def test_update_review(session: AsyncSession):
         session=session,
         user_id=user.id,
         media_id=media.id,
-        content="Initial comment",
-        rating=3
+        rating=3,
+        content="Initial comment"
     )
 
     updated = await crud_review.update_review(
@@ -370,6 +375,7 @@ async def test_delete_review(session: AsyncSession):
         session=session,
         user_id=user.id,
         media_id=media.id,
+        rating=4,
         content="To be deleted"
     )
 
@@ -417,6 +423,7 @@ async def test_hide_review(session: AsyncSession):
         session=session,
         user_id=user.id,
         media_id=media.id,
+        rating=5,
         content="To be hidden"
     )
 

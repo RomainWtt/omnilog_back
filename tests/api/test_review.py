@@ -57,11 +57,11 @@ async def test_create_review_success(
 
 
 @pytest.mark.asyncio
-async def test_create_review_without_rating(
+async def test_create_review_without_content(
     authenticated_client: tuple[AsyncClient, dict],
     session
 ):
-    """Test creating review with only comment (no rating)"""
+    """Test creating review with only rating (no content)"""
     client, tokens = authenticated_client
 
     from app.db.models import Media, MediaType
@@ -77,7 +77,7 @@ async def test_create_review_without_rating(
 
     review_data = {
         "media_id": str(media.id),
-        "content": "Great movie but no rating yet"
+        "rating": 5
     }
 
     response = await client.post("/api/v1/review/", json=review_data)
@@ -85,8 +85,8 @@ async def test_create_review_without_rating(
     assert response.status_code == 201
     data = response.json()
 
-    assert data["content"] == "Great movie but no rating yet"
-    assert data["rating"] is None
+    assert data["content"] is None
+    assert data["rating"] == 5
 
 
 @pytest.mark.asyncio
@@ -110,6 +110,7 @@ async def test_create_review_duplicate(
 
     review_data = {
         "media_id": str(media.id),
+        "rating": 4,
         "content": "First review"
     }
 
@@ -119,6 +120,7 @@ async def test_create_review_duplicate(
 
     # Try to create second review (should fail)
     review_data["content"] = "Second review attempt"
+    review_data["rating"] = 5
     response2 = await client.post("/api/v1/review/", json=review_data)
 
     assert response2.status_code == 400
@@ -153,18 +155,18 @@ async def test_create_review_invalid_rating(
     response = await client.post("/api/v1/review/", json=review_data)
     assert response.status_code == 422
 
-    # Rating too low
+    # Rating too low (0 is now invalid, minimum is 1)
     review_data["rating"] = 0
     response = await client.post("/api/v1/review/", json=review_data)
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_create_review_empty_content(
+async def test_create_review_missing_rating(
     authenticated_client: tuple[AsyncClient, dict],
     session
 ):
-    """Test creating review with empty content (should fail with 422)"""
+    """Test creating review without rating (should fail with 422)"""
     client, tokens = authenticated_client
 
     from app.db.models import Media, MediaType
@@ -180,8 +182,7 @@ async def test_create_review_empty_content(
 
     review_data = {
         "media_id": str(media.id),
-        "content": "",
-        "rating": 5
+        "content": "Great movie"
     }
 
     response = await client.post("/api/v1/review/", json=review_data)
@@ -427,7 +428,8 @@ async def test_update_review_not_owner(
     review = Review(
         user_id=other_user.id,
         media_id=media.id,
-        content="Other user's review"
+        content="Other user's review",
+        rating=4
     )
     session.add(review)
     await session.commit()
@@ -483,6 +485,7 @@ async def test_delete_review_success(
     # Create review
     review_data = {
         "media_id": str(media.id),
+        "rating": 4,
         "content": "To be deleted"
     }
     create_response = await client.post("/api/v1/review/", json=review_data)
@@ -525,6 +528,7 @@ async def test_delete_review_not_in_public_list(
     # Create review
     review_data = {
         "media_id": str(media.id),
+        "rating": 4,
         "content": "To be deleted"
     }
     create_response = await client.post("/api/v1/review/", json=review_data)
@@ -575,7 +579,8 @@ async def test_delete_review_not_owner(
     review = Review(
         user_id=other_user.id,
         media_id=media.id,
-        content="Other's review"
+        content="Other's review",
+        rating=3
     )
     session.add(review)
     await session.commit()
@@ -691,14 +696,7 @@ async def test_get_media_average_no_ratings(
     await session.refresh(user)
     await session.refresh(media)
 
-    # Create review without rating
-    review = Review(
-        user_id=user.id,
-        media_id=media.id,
-        content="Comment only, no rating"
-    )
-    session.add(review)
-    await session.commit()
+    # Don't create any review - test media with no reviews
 
     response = await client.get(f"/api/v1/review/media/{media.id}/average")
 
@@ -836,7 +834,8 @@ async def test_get_user_reviews(
         review = Review(
             user_id=current_user.id,
             media_id=media.id,
-            content=f"Review {i}"
+            content=f"Review {i}",
+            rating=((i % 5) + 1)
         )
         session.add(review)
     await session.commit()
@@ -879,7 +878,8 @@ async def test_get_user_reviews_pagination(
         review = Review(
             user_id=current_user.id,
             media_id=media.id,
-            content=f"Review {i}"
+            content=f"Review {i}",
+            rating=((i % 5) + 1)
         )
         session.add(review)
     await session.commit()
@@ -972,6 +972,7 @@ async def test_get_recent_reviews(
             user_id=user.id,
             media_id=media.id,
             content=f"Review {i}",
+            rating=((i % 5) + 1),
             created_at=base_time - timedelta(hours=i)
         )
         session.add(review)
@@ -1013,6 +1014,7 @@ async def test_hide_review_owner(
     # Create review
     review_data = {
         "media_id": str(media.id),
+        "rating": 4,
         "content": "To be hidden"
     }
     create_response = await client.post("/api/v1/review/", json=review_data)
@@ -1067,7 +1069,8 @@ async def test_hide_review_admin(
     review = Review(
         user_id=other_user.id,
         media_id=media.id,
-        content="Inappropriate content"
+        content="Inappropriate content",
+        rating=3
     )
     session.add(review)
     await session.commit()
@@ -1115,7 +1118,8 @@ async def test_hide_review_not_authorized(
     review = Review(
         user_id=other_user.id,
         media_id=media.id,
-        content="Other's review"
+        content="Other's review",
+        rating=3
     )
     session.add(review)
     await session.commit()
@@ -1150,6 +1154,7 @@ async def test_unhide_review(
     # Create and hide review
     review_data = {
         "media_id": str(media.id),
+        "rating": 5,
         "content": "Hidden then restored"
     }
     create_response = await client.post("/api/v1/review/", json=review_data)
@@ -1211,6 +1216,7 @@ async def test_unhide_review_admin(
         user_id=other_user.id,
         media_id=media.id,
         content="Hidden review",
+        rating=3,
         is_visible=False
     )
     session.add(review)

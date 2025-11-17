@@ -119,7 +119,17 @@ async def test_get_media_by_tmdb_id(authenticated_client: tuple[AsyncClient, dic
         "production_companies": [{"name": "Fox"}],
         "vote_average": 8.4,
         "vote_count": 10000,
-        "original_language": "en"
+        "original_language": "en",
+        "credits": {
+            "cast": [
+                {"name": "Brad Pitt"},
+                {"name": "Edward Norton"},
+                {"name": "Helena Bonham Carter"}
+            ],
+            "crew": [
+                {"name": "David Fincher", "job": "Director"}
+            ]
+        }
     }
     
     with patch('app.api.endpoints.media.tmdb_service.get_movie_details',
@@ -132,6 +142,11 @@ async def test_get_media_by_tmdb_id(authenticated_client: tuple[AsyncClient, dic
     data = response.json()
     assert data["tmdb_id"] == 550
     assert data["title"] == "Fight Club"
+    assert "actors" in data
+    assert "directors" in data
+    assert len(data["actors"]) == 3
+    assert data["actors"][0] == "Brad Pitt"
+    assert data["directors"][0] == "David Fincher"
 
 
 @pytest.mark.asyncio

@@ -16,8 +16,8 @@ async def create_review(
     session: AsyncSession,
     user_id: UUID,
     media_id: UUID,
-    content: str,
-    rating: Optional[int] = None
+    rating: int,
+    content: Optional[str] = None
 ) -> Review:
     """
     Create a new review/comment
@@ -26,8 +26,8 @@ async def create_review(
         session: Database session
         user_id: ID of the user creating the review
         media_id: ID of the media being reviewed
-        content: Review content (required)
-        rating: Rating from 1-5 (optional)
+        rating: Rating from 1-5 (required)
+        content: Review content (optional)
 
     Returns:
         The created Review object

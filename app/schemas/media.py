@@ -24,6 +24,8 @@ class MediaCreate(MediaBase):
     episode_run_time: Optional[list[int]] = None
     genre: Optional[list[GenreRead]] = None  # TMDB genre IDs as JSON
     production_companies: Optional[list[str]] = None
+    actors: Optional[list[str]] = None
+    directors: Optional[list[str]] = None
     original_language: Optional[str] = None
     popularity: Optional[float] = None
     vote_average: Optional[float] = None
@@ -44,6 +46,8 @@ class MediaRead(MediaBase):
     genre_ids: Optional[list[int]] = None  # TMDB genre IDs as JSON
     genres: Optional[list[GenreRead]] = None
     production_companies: Optional[list[str]] = None
+    actors: Optional[list[str]] = None
+    directors: Optional[list[str]] = None
     original_language: Optional[str] = None
     popularity: Optional[float] = None
     vote_average: Optional[float] = None
