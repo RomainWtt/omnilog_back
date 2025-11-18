@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     APPLE_REDIRECT_URI: Optional[str] = None
     
     # CORS
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173","https://omnilog.inscriptionrlt.be"]
     
     # Redis size (a voir)
     TOP_MOVIES_CACHE_SIZE: int = 500
