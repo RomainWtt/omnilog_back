@@ -32,6 +32,7 @@ dependencies = [
     "httpx>=0.27.2",
     "redis>=5.0.0",
     "authlib>=1.3.0",
+    "greenlet>=3.2.4",
 ]
 
 [project.optional-dependencies]
@@ -75,4 +76,12 @@ exclude_lines = [
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
+]
+
+[dependency-groups]
+dev = [
+    "aiosqlite>=0.21.0",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-cov>=7.0.0",
 ]

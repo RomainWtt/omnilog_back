@@ -4,7 +4,7 @@ from httpx import AsyncClient
 
 @pytest.mark.asyncio
 async def test_full_user_journey(client: AsyncClient, session):
-    """Test complete user journey from registration to tracking media"""
+    """Test complete user journey from registration to tracking media - FIXED"""
     
     # 1. Register
     user_data = {
@@ -57,21 +57,21 @@ async def test_full_user_journey(client: AsyncClient, session):
     await session.commit()
     await session.refresh(media)
     
-    # 6. Add to library
+    # 6. Add to library - REMOVED progress field
     library_response = await client.post(
         "/api/v1/library/",
         json={
             "media_id": str(media.id),
             "list_status": "watching",
-            "progress": 0
+            "timecode": 0  # Use timecode instead of progress
         }
     )
     assert library_response.status_code == 201, f"Body: {library_response.text}"
     
-    # 7. Update progress
+    # 7. Update progress - REMOVED progress field
     progress_response = await client.put(
         f"/api/v1/library/{media.id}/progress",
-        json={"progress": 50, "timecode": 3600}
+        json={"timecode": 3600}  # Only timecode, no progress percentage
     )
     assert progress_response.status_code == 200
     

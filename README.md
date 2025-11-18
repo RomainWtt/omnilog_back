@@ -200,7 +200,7 @@ uv pip install requests
 Après avoir copié le fichier .env, **vous devez le remplir** avec vos propres configurations (voir section suivante).
 
 #Lancer Redis + Postgres
-docker run -d --name omnilog_db -e POSTGRES_USER=omnilog_user -e POSTGRES_PASSWORD=omnilog_password -e POSTGRES_DB=omnilog_db -p 5432:5432 postgres:15-alpine
+docker run -d --name omnilog_db -e POSTGRES_USER=omnilog_admin -e POSTGRES_PASSWORD=SuperSecurePasswordHelmo2025 -e POSTGRES_DB=omnilog_db -p 5432:5432 postgres:15-alpine
 
 docker run -d --name omnilog_redis -p 6379:6379 redis:7-alpine
 
@@ -221,17 +221,19 @@ Le fichier .env est utilisé pour configurer l'application. Il est chargé au d�
 
 **Exemple de fichier .env :**
 
-```json
+```ini
 # .env
 
 # Application Settings
 DEBUG=True
 PROJECT_NAME="Omnilog API"
 VERSION="1.0.0"
+ENVIRONMENT="development"
 
 # Database Configuration
 # Format: postgresql+asyncpg://username:password@host:port/database
 DATABASE_URL=postgresql+asyncpg://omnilog_user:your_password@localhost:5432/omnilog_db
+#Problème avec localhost sur windows, utiliser host.docker.internal
 
 # Redis Configuration
 REDIS_URL=redis://localhost:6379/0
@@ -378,6 +380,23 @@ FastAPI → PostgreSQL (async) → SQLModel ORM
 * [**TestClient**](https://fastapi.tiangolo.com/tutorial/testing/) - Client de test pour les applications ASGI
 
 ## **🗄️ Base de données & Migrations**
+
+### Seed la DB
+
+Ajouter ceci au .env
+```bash
+ENVIRONMENT=development
+```
+
+Ensuite run:
+```bash
+python seed.py
+```
+ou
+```bash
+python seed.py clear
+python seed.py
+```
 
 Nous utilisons **Alembic** (basé sur SQLAlchemy) pour gérer les migrations de schéma de la base de données.
 

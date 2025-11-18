@@ -27,13 +27,13 @@ async def test_add_to_library(
     authenticated_client: tuple[AsyncClient, dict],
     test_media
 ):
-    """Test adding media to user library"""
+    """Test adding media to user library - REMOVED progress"""
     client, tokens = authenticated_client
     
     entry_data = {
         "media_id": str(test_media.id),
         "list_status": "watching",
-        "progress": 0,
+        "timecode": 0,  # Use timecode instead of progress
         "score": 8
     }
     
@@ -50,7 +50,7 @@ async def test_add_to_library(
 async def test_add_nonexistent_media_to_library(
     authenticated_client: tuple[AsyncClient, dict]
 ):
-    """Test adding non-existent media to library"""
+    """Test adding non-existent media to library - REMOVED progress"""
     client, tokens = authenticated_client
     
     from uuid import uuid4
@@ -59,7 +59,7 @@ async def test_add_nonexistent_media_to_library(
     entry_data = {
         "media_id": fake_id,
         "list_status": "watching",
-        "progress": 0
+        "timecode": 0  # Use timecode instead of progress
     }
     
     response = await client.post("/api/v1/library/", json=entry_data)
@@ -72,14 +72,14 @@ async def test_get_library(
     authenticated_client: tuple[AsyncClient, dict],
     test_media
 ):
-    """Test getting user's library"""
+    """Test getting user's library - REMOVED progress"""
     client, tokens = authenticated_client
     
     # Add media to library first
     await client.post("/api/v1/library/", json={
         "media_id": str(test_media.id),
         "list_status": "completed",
-        "progress": 100
+        "timecode": 8340  # Full movie runtime in seconds (139 min)
     })
     
     response = await client.get("/api/v1/library/")
@@ -95,14 +95,14 @@ async def test_get_library_filtered(
     authenticated_client: tuple[AsyncClient, dict],
     test_media
 ):
-    """Test getting filtered library"""
+    """Test getting filtered library - REMOVED progress"""
     client, tokens = authenticated_client
     
     # Add media with different statuses
     await client.post("/api/v1/library/", json={
         "media_id": str(test_media.id),
         "list_status": "completed",
-        "progress": 100
+        "timecode": 8340
     })
     
     response = await client.get("/api/v1/library/?status=completed")
@@ -117,20 +117,20 @@ async def test_update_library_entry(
     authenticated_client: tuple[AsyncClient, dict],
     test_media
 ):
-    """Test updating library entry"""
+    """Test updating library entry - REMOVED progress"""
     client, tokens = authenticated_client
     
     # Add to library
     await client.post("/api/v1/library/", json={
         "media_id": str(test_media.id),
         "list_status": "watching",
-        "progress": 0
+        "timecode": 0
     })
     
     # Update entry
     update_data = {
         "list_status": "completed",
-        "progress": 100,
+        "timecode": 8340,  # Use timecode instead of progress
         "score": 9
     }
     
@@ -142,7 +142,7 @@ async def test_update_library_entry(
     assert response.status_code == 200, f"Response: {response.status_code}, Body: {response.text}"
     data = response.json()
     assert data["list_status"] == "completed"
-    assert data["progress"] == 100
+    assert data["timecode"] == 8340
     assert data["score"] == 9
 
 
@@ -151,12 +151,11 @@ async def test_update_progress(
     authenticated_client: tuple[AsyncClient, dict],
     test_media
 ):
-    """Test updating viewing progress"""
+    """Test updating viewing progress - REMOVED progress field"""
     client, tokens = authenticated_client
     
     progress_data = {
-        "progress": 50,
-        "timecode": 3600,
+        "timecode": 3600,  # Only timecode, no progress percentage
         "current_season": 1,
         "current_episode": 5
     }
@@ -168,7 +167,6 @@ async def test_update_progress(
     
     assert response.status_code == 200, f"Response: {response.status_code}, Body: {response.text}"
     data = response.json()
-    assert data["progress"] == 50
     assert data["timecode"] == 3600
     assert data["current_season"] == 1
     assert data["current_episode"] == 5
@@ -179,14 +177,14 @@ async def test_remove_from_library(
     authenticated_client: tuple[AsyncClient, dict],
     test_media
 ):
-    """Test removing media from library"""
+    """Test removing media from library - REMOVED progress"""
     client, tokens = authenticated_client
     
     # Add to library first
     await client.post("/api/v1/library/", json={
         "media_id": str(test_media.id),
         "list_status": "watching",
-        "progress": 0
+        "timecode": 0
     })
     
     # Remove from library
@@ -227,14 +225,14 @@ async def test_get_library_entry(
     authenticated_client: tuple[AsyncClient, dict],
     test_media
 ):
-    """Test getting specific library entry"""
+    """Test getting specific library entry - REMOVED progress"""
     client, tokens = authenticated_client
     
     # Add to library
     await client.post("/api/v1/library/", json={
         "media_id": str(test_media.id),
         "list_status": "watching",
-        "progress": 50
+        "timecode": 3000  # Use timecode instead of progress
     })
     
     # Get specific entry
@@ -243,7 +241,7 @@ async def test_get_library_entry(
     assert response.status_code == 200, f"Response: {response.status_code}, Body: {response.text}"
     data = response.json()
     assert data["media_id"] == str(test_media.id)
-    assert data["progress"] == 50
+    assert data["timecode"] == 3000
 
 
 @pytest.mark.asyncio

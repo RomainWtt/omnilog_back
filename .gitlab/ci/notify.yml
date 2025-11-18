@@ -1,0 +1,205 @@
+# Stage: Notify
+# Notifications Discord pour develop et main
+
+.discord-base:
+  stage: notify
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl jq
+  allow_failure: true
+
+# Notification pour develop (après les tests)
+discord:test-notification:
+  extends:
+    - .discord-base
+    - .develop-only
+  needs:
+    - job: test:unit
+      artifacts: true
+  script:
+    - |
+      if [ -z "$DISCORD_WEBHOOK_URL_BACKEND" ]; then
+        echo "⚠️ DISCORD_WEBHOOK_URL_BACKEND n'est pas défini, notification ignorée"
+        exit 0
+      fi
+      
+      echo "📊 Analyse du statut des tests..."
+      
+      # Détermination du statut
+      PIPELINE_FAILED=false
+      TESTS_STATUS="✅ Réussis"
+      
+      if [ -f "$PIPELINE_STATUS_FILE" ]; then
+        if grep -q "tests_status=failed" $PIPELINE_STATUS_FILE; then
+          PIPELINE_FAILED=true
+          TESTS_STATUS="❌ Échoués"
+        fi
+      fi
+      
+      # Extraction du coverage
+      COVERAGE="N/A"
+      if [ -f "htmlcov/index.html" ]; then
+        # Extraire toutes les occurrences de nombres suivis de % et prendre le dernier
+        COVERAGE=$(grep -o '[0-9]\+%' htmlcov/index.html | tail -1 | sed 's/%//')
+        [ -z "$COVERAGE" ] && COVERAGE="N/A"
+      fi
+      
+      # Statut et couleur
+      if [ "$PIPELINE_FAILED" = true ]; then
+        PIPELINE_STATUS="❌ Échec"
+        PIPELINE_COLOR=15158332
+        STATUS_EMOJI="❌"
+      else
+        PIPELINE_STATUS="✅ Réussite"
+        PIPELINE_COLOR=3066993
+        STATUS_EMOJI="✅"
+      fi
+      
+      # Message de commit
+      COMMIT_MSG=$(echo "$CI_COMMIT_MESSAGE" | head -1 | cut -c 1-80)
+      
+      # Description
+      DESCRIPTION="**📝 Informations du Commit**
+
+      • **Hash:** \`${CI_COMMIT_SHORT_SHA}\`
+      • **Auteur:** ${GITLAB_USER_NAME}
+      • **Message:** ${COMMIT_MSG}"
+      
+      # Affichage du coverage
+      COVERAGE_DISPLAY="${COVERAGE}"
+      if [ "$COVERAGE" != "N/A" ]; then
+        COVERAGE_DISPLAY="${COVERAGE}%"
+      fi
+      
+      # Payload Discord
+      PAYLOAD=$(jq -n \
+        --arg title "${STATUS_EMOJI} Pipeline #${CI_PIPELINE_ID} • ${CI_COMMIT_REF_NAME}" \
+        --arg description "$DESCRIPTION" \
+        --argjson color "$PIPELINE_COLOR" \
+        --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
+        --arg pipeline_status "$PIPELINE_STATUS" \
+        --arg branch "$CI_COMMIT_REF_NAME" \
+        --arg coverage "$COVERAGE_DISPLAY" \
+        --arg tests_status "$TESTS_STATUS" \
+        --arg pipeline_url "$CI_PIPELINE_URL" \
+        '{
+          embeds: [{
+            title: $title,
+            description: $description,
+            color: $color,
+            fields: [
+              {"name": "⚡ Statut", "value": $pipeline_status, "inline": true},
+              {"name": "🌿 Branche", "value": ("`" + $branch + "`"), "inline": true},
+              {"name": "📈 Coverage", "value": $coverage, "inline": true},
+              {"name": "🧪 Tests", "value": $tests_status, "inline": true},
+              {"name": "🔗 Pipeline", "value": ("[Voir les détails](" + $pipeline_url + ")"), "inline": true}
+            ],
+            footer: {text: "Omnilogue Backend • CI/CD"},
+            timestamp: $timestamp
+          }]
+        }')
+      
+      echo "$PAYLOAD" > /tmp/discord-payload.json
+      echo "📤 Payload Discord:"
+      cat /tmp/discord-payload.json | jq '.'
+      
+      # Envoi
+      RESPONSE=$(curl -s -w "\n%{http_code}" \
+        -H "Content-Type: application/json" \
+        -X POST \
+        -d @/tmp/discord-payload.json \
+        "$DISCORD_WEBHOOK_URL_BACKEND")
+      
+      HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+      
+      if [ "$HTTP_CODE" = "204" ] || [ "$HTTP_CODE" = "200" ]; then
+        echo "✅ Notification Discord envoyée avec succès (HTTP $HTTP_CODE)"
+      else
+        echo "❌ Échec de la notification Discord (HTTP $HTTP_CODE)"
+        echo "Response: $(echo "$RESPONSE" | head -n -1)"
+        exit 1
+      fi
+  when: always
+
+# Notification pour main (après le déploiement)
+discord:deploy-notification:
+  extends:
+    - .discord-base
+    - .main-only
+  needs:
+    - job: deploy:production
+      artifacts: true
+  script:
+    - |
+      if [ -z "$DISCORD_WEBHOOK_URL_BACKEND" ]; then
+        echo "⚠️ DISCORD_WEBHOOK_URL_BACKEND n'est pas défini"
+        exit 0
+      fi
+      
+      DEPLOY_STATUS="✅ Réussi"
+      DEPLOY_COLOR=3066993
+      STATUS_EMOJI="🚀"
+      
+      # Vérifier le statut du déploiement
+      if [ -f "$PIPELINE_STATUS_FILE" ] && grep -q "deploy_status=failed" $PIPELINE_STATUS_FILE; then
+        DEPLOY_STATUS="❌ Échec"
+        DEPLOY_COLOR=15158332
+        STATUS_EMOJI="⚠️"
+      fi
+      
+      COMMIT_MSG=$(echo "$CI_COMMIT_MESSAGE" | head -1 | cut -c 1-80)
+      
+      DESCRIPTION="**📝 Détails du Déploiement**
+
+      • **Hash:** \`${CI_COMMIT_SHORT_SHA}\`
+      • **Auteur:** ${GITLAB_USER_NAME}
+      • **Message:** ${COMMIT_MSG}
+
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      **🌐 API en Production**
+      [🔗 Ouvrir l'API](https://omnilog-api.mathdesigns.dev)"
+      
+      PAYLOAD=$(jq -n \
+        --arg title "${STATUS_EMOJI} Déploiement Production • Pipeline #${CI_PIPELINE_ID}" \
+        --arg description "$DESCRIPTION" \
+        --argjson color "$DEPLOY_COLOR" \
+        --arg status "$DEPLOY_STATUS" \
+        --arg url "https://omnilog-api.mathdesigns.dev" \
+        --arg pipeline_url "$CI_PIPELINE_URL" \
+        --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
+        '{
+          embeds: [{
+            title: $title,
+            description: $description,
+            color: $color,
+            fields: [
+              {"name": "🎯 Statut", "value": $status, "inline": true},
+              {"name": "⏱️ Déployé", "value": "<t:" + (now | tostring) + ":R>", "inline": true},
+              {"name": "📊 Logs", "value": "[Consulter le pipeline](" + $pipeline_url + ")", "inline": true}
+            ],
+            footer: {text: "Omnilogue Backend • Production"},
+            timestamp: $timestamp
+          }]
+        }')
+      
+      echo "$PAYLOAD" > /tmp/discord-payload.json
+      echo "📤 Payload Discord:"
+      cat /tmp/discord-payload.json | jq '.'
+      
+      # Envoi
+      RESPONSE=$(curl -s -w "\n%{http_code}" \
+        -H "Content-Type: application/json" \
+        -X POST \
+        -d @/tmp/discord-payload.json \
+        "$DISCORD_WEBHOOK_URL_BACKEND")
+      
+      HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+      
+      if [ "$HTTP_CODE" = "204" ] || [ "$HTTP_CODE" = "200" ]; then
+        echo "✅ Notification de déploiement envoyée avec succès (HTTP $HTTP_CODE)"
+      else
+        echo "❌ Échec de la notification Discord (HTTP $HTTP_CODE)"
+        echo "Response: $(echo "$RESPONSE" | head -n -1)"
+        exit 1
+      fi
+  when: always
