@@ -201,8 +201,8 @@ async def create_review(
 
     Users can only have one review per media.
     """
-    # Check if user already reviewed this media
-    existing_review = await crud_review.get_user_review_for_media(
+    # Check if user already has a VISIBLE review for this media
+    existing_review = await crud_review.get_user_visible_review_for_media(
         session=session,
         user_id=current_user.id,
         media_id=review_data.media_id
@@ -211,7 +211,7 @@ async def create_review(
     if existing_review:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You have already reviewed this media. Use PUT to update your review."
+            detail="already reviewed"
         )
 
     review = await crud_review.create_review(

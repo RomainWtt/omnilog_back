@@ -13,11 +13,11 @@ from sqlmodel import select
 
 
 async def create_review(
-    session: AsyncSession,
-    user_id: UUID,
-    media_id: UUID,
-    rating: int,
-    content: Optional[str] = None
+        session: AsyncSession,
+        user_id: UUID,
+        media_id: UUID,
+        rating: int,
+        content: Optional[str] = None
 ) -> Review:
     """
     Create a new review/comment
@@ -48,8 +48,8 @@ async def create_review(
 
 
 async def get_review_by_id(
-    session: AsyncSession,
-    review_id: UUID
+        session: AsyncSession,
+        review_id: UUID
 ) -> Optional[Review]:
     """
     Get a review by its ID
@@ -70,10 +70,10 @@ async def get_review_by_id(
 
 
 async def get_media_comments(
-    session: AsyncSession,
-    media_id: UUID,
-    limit: int = 20,
-    offset: int = 0
+        session: AsyncSession,
+        media_id: UUID,
+        limit: int = 20,
+        offset: int = 0
 ) -> List[Review]:
     """
     Get all visible comments for a specific media with pagination
@@ -100,8 +100,8 @@ async def get_media_comments(
 
 
 async def get_media_comments_count(
-    session: AsyncSession,
-    media_id: UUID
+        session: AsyncSession,
+        media_id: UUID
 ) -> int:
     """
     Get total count of visible comments for a media
@@ -123,10 +123,10 @@ async def get_media_comments_count(
 
 
 async def get_user_reviews(
-    session: AsyncSession,
-    user_id: UUID,
-    limit: int = 20,
-    offset: int = 0
+        session: AsyncSession,
+        user_id: UUID,
+        limit: int = 20,
+        offset: int = 0
 ) -> List[Review]:
     """
     Get all reviews created by a specific user
@@ -152,10 +152,10 @@ async def get_user_reviews(
 
 
 async def update_review(
-    session: AsyncSession,
-    review_id: UUID,
-    content: Optional[str] = None,
-    rating: Optional[int] = None
+        session: AsyncSession,
+        review_id: UUID,
+        content: Optional[str] = None,
+        rating: Optional[int] = None
 ) -> Optional[Review]:
     """
     Update a review's content and/or rating
@@ -190,8 +190,8 @@ async def update_review(
 
 
 async def delete_review(
-    session: AsyncSession,
-    review_id: UUID
+        session: AsyncSession,
+        review_id: UUID
 ) -> Optional[Review]:
     """
     Delete a review (soft delete by setting is_visible to False)
@@ -220,8 +220,8 @@ async def delete_review(
 
 
 async def hide_review(
-    session: AsyncSession,
-    review_id: UUID
+        session: AsyncSession,
+        review_id: UUID
 ) -> Optional[Review]:
     """
     Hide a review (soft delete by setting is_visible to False)
@@ -249,8 +249,8 @@ async def hide_review(
 
 
 async def unhide_review(
-    session: AsyncSession,
-    review_id: UUID
+        session: AsyncSession,
+        review_id: UUID
 ) -> Optional[Review]:
     """
     Unhide a review (set is_visible to True)
@@ -278,9 +278,9 @@ async def unhide_review(
 
 
 async def get_user_review_for_media(
-    session: AsyncSession,
-    user_id: UUID,
-    media_id: UUID
+        session: AsyncSession,
+        user_id: UUID,
+        media_id: UUID
 ) -> Optional[Review]:
     """
     Get a specific user's review for a specific media
@@ -298,13 +298,33 @@ async def get_user_review_for_media(
         select(Review)
         .where(Review.user_id == user_id)
         .where(Review.media_id == media_id)
+        .where(Review.is_visible == True)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_user_visible_review_for_media(
+        session: AsyncSession,
+        user_id: UUID,
+        media_id: UUID
+) -> Optional[Review]:
+    """
+    Get a specific user's VISIBLE review for a specific media.
+    Use this to check if user has an active review for this media.
+    """
+    result = await session.execute(
+        select(Review)
+        .options(selectinload(Review.user))
+        .where(Review.user_id == user_id)
+        .where(Review.media_id == media_id)
+        .where(Review.is_visible == True)
     )
     return result.scalar_one_or_none()
 
 
 async def get_media_average_rating(
-    session: AsyncSession,
-    media_id: UUID
+        session: AsyncSession,
+        media_id: UUID
 ) -> Optional[float]:
     """
     Calculate the average rating for a media
@@ -328,8 +348,8 @@ async def get_media_average_rating(
 
 
 async def get_recent_reviews(
-    session: AsyncSession,
-    limit: int = 10
+        session: AsyncSession,
+        limit: int = 10
 ) -> List[Review]:
     """
     Get the most recent reviews across all media
