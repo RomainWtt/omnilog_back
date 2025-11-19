@@ -59,7 +59,6 @@ async def get_comments_for_media(
 async def get_media_average_rating(
     media_id: UUID,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
 ):
     """
     Get the average rating for a specific media.
