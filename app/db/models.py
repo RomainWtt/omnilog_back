@@ -194,23 +194,6 @@ class ReviewReport(SQLModel, table=True):
         sa_relationship_kwargs={"foreign_keys": "[ReviewReport.reported_user_id]"}
     )
     review: Review = Relationship(back_populates="reports")
-    
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    reporter_id: UUID = Field(foreign_key="users.id", index=True)
-    reported_user_id: UUID = Field(foreign_key="users.id", index=True)
-    review_id: UUID = Field(foreign_key="reviews.id", index=True)
-    reason: str = Field(max_length=1000)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    reporter: User = Relationship(
-        back_populates="reported_reviews",
-        sa_relationship_kwargs={"foreign_keys": "[ReviewReport.reporter_id]"}
-    )
-    reported_user: User = Relationship(
-        back_populates="received_reports",
-        sa_relationship_kwargs={"foreign_keys": "[ReviewReport.reported_user_id]"}
-    )
-    review: Review = Relationship(back_populates="reports")
 
 
 class Friendship(SQLModel, table=True):

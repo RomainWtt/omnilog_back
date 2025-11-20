@@ -161,3 +161,24 @@ async def activate_user(
     
     activated_user = await crud_user.activate_user(session, user_id)
     return activated_user
+
+@router.get("/", response_model=list[UserRead])
+async def get_all_users(
+    skip: int = 0,
+    limit: int = 100,
+    search: str | None = None,
+    is_active: bool | None = None,
+    session: AsyncSession = Depends(get_session)
+):
+    users = await crud_user.get_all_users(
+        session=session,
+        skip=skip,
+        limit=limit,
+        search=search,
+        is_active=is_active
+    )
+
+    if not users:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No users found")
+
+    return users

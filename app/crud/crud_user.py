@@ -138,3 +138,28 @@ async def activate_user(session: AsyncSession, user_id: UUID) -> Optional[User]:
     await session.commit()
     await session.refresh(user)
     return user
+
+
+async def get_all_users(
+    session: AsyncSession,
+    skip: int = 0,
+    limit: int = 100,
+    search: str | None = None,
+    is_active: bool | None = None
+) -> list[User]:
+
+    query = select(User).where(User.is_admin == False)
+
+    if search:
+        search_pattern = f"%{search.lower()}%"
+        query = query.where(
+            (User.username.ilike(search_pattern)) |
+            (User.email.ilike(search_pattern))
+        )
+    if is_active is not None:
+        query = query.where(User.is_active == is_active)
+
+    query = query.offset(skip).limit(limit)
+
+    result = await session.execute(query)
+    return result.scalars().all()
