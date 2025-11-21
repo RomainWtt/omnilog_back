@@ -143,7 +143,7 @@ async def update_library_entry(
     return updated_entry
 
 
-@router.put("/{media_id}/progress", response_model=UserMediaEntryRead)
+@router.put("/{media_id}/progress", response_model=UserMediaEntryRead | None)
 async def update_progress(
         media_id: UUID,
         progress: ProgressUpdate,
@@ -166,6 +166,21 @@ async def update_progress(
         user_id=current_user.id,
         media_id=media_id
     )
+
+    if existing_entry and progress.timecode <= 0:
+        # Supprimer l'entrée directement
+        deleted = await crud_media.delete_user_media_entry(
+            session=session,
+            user_id=current_user.id,
+            media_id=media_id
+        )
+
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Media not in library"
+            )
+        return None
 
     if not existing_entry:
         # Create new entry if doesn't exist - REMOVED progress parameter

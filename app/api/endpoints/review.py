@@ -31,26 +31,31 @@ async def get_comments_for_media(
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Get paginated comments for a specific media with user information.
-
-    Returns only visible comments ordered by most recent first.
+    Get paginated comments.
     """
-    offset = (page - 1) * 20
+    # On définit une taille de page constante pour que tous les calculs soient alignés
+    PAGE_SIZE = 20
+
+    # Calcul de l'offset : Page 1 = 0, Page 2 = 20, etc.
+    offset = (page - 1) * PAGE_SIZE
 
     comments = await crud_review.get_media_comments(
         session=session,
         media_id=media_id,
-        limit=20,
+        limit=PAGE_SIZE,
         offset=offset,
     )
 
     total = await crud_review.get_media_comments_count(session, media_id)
 
+    # Calcul du nombre de pages total (formule mathématique pour arrondir au supérieur)
+    total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+
     return {
         "results": [ReviewRead.model_validate(comment) for comment in comments],
         "page": page,
         "total": total,
-        "pages": (total + 19) // 20,
+        "pages": total_pages,
         "source": "local"
     }
 
