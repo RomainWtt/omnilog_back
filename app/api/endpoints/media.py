@@ -127,7 +127,6 @@ async def search_media(
             detail=f"Error searching media: {str(e)}"
         )
 
-
 @router.get("/{media_id}", response_model=MediaRead)
 async def get_media_details(
         media_id: UUID,
