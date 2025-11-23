@@ -166,7 +166,7 @@ async def test_get_user_friendships_no_match(authenticated_client: tuple[AsyncCl
     client, tokens = authenticated_client
 
     response = await client.get(
-        f"/api/v1/friendships/friends?status={FriendshipStatus.BLOCKED}"
+        f"/api/v1/friendships/friends?status={FriendshipStatus.BLOCKED.value}"
     )
 
     assert response.status_code == 200
