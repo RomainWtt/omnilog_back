@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     
     DATABASE_URL: str
+
+    FRONTEND_URL: str = "http://localhost:5173"
     
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_CACHE_TTL: int = 3600  # 1 hour
@@ -26,9 +28,9 @@ class Settings(BaseSettings):
     
     # OAuth
     # Google
-    GOOGLE_CLIENT_ID: Optional[str] = None
-    GOOGLE_CLIENT_SECRET: Optional[str] = None
-    GOOGLE_REDIRECT_URI: Optional[str] = None
+    GOOGLE_CLIENT_ID: Optional[str] = "dummy"
+    GOOGLE_CLIENT_SECRET: Optional[str] = "dummy"
+    GOOGLE_REDIRECT_URI: Optional[str] = "http://localhost:5173/auth/callback/google"
     
     #Facebook
     FACEBOOK_CLIENT_ID: Optional[str] = None
@@ -39,6 +41,13 @@ class Settings(BaseSettings):
     APPLE_CLIENT_ID: Optional[str] = None
     APPLE_CLIENT_SECRET: Optional[str] = None
     APPLE_REDIRECT_URI: Optional[str] = None
+
+    # 📧 Email Configuration
+    MAIL_USERNAME: str = "test@example.com"
+    MAIL_PASSWORD: str = "dummy"
+    MAIL_FROM: str = "test@example.com"
+    MAIL_SERVER: str = "localhost"
+    MAIL_PORT: int = 587
     
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173","https://omnilog.inscriptionrlt.be"]

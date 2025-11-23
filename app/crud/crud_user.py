@@ -144,8 +144,8 @@ async def get_all_users(
     session: AsyncSession,
     skip: int = 0,
     limit: int = 100,
-    search: str | None = None,
-    is_active: bool | None = None
+    search: Optional[str] = None,
+    is_active: Optional[bool] = None
 ) -> list[User]:
 
     query = select(User).where(User.is_admin == False)
@@ -163,3 +163,13 @@ async def get_all_users(
 
     result = await session.execute(query)
     return result.scalars().all()
+
+async def get_user_by_verification_token(
+    session: AsyncSession,
+    token: str
+) -> Optional[User]:
+    """Récupère un utilisateur par son token de vérification"""
+    result = await session.execute(
+        select(User).where(User.email_verification_token == token)
+    )
+    return result.scalar_one_or_none()
