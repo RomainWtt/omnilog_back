@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+
+from starlette.middleware.sessions import SessionMiddleware
+
 from app.core.config import settings
 from app.api.router import api_router
 from app.db.session import init_db
@@ -31,6 +34,15 @@ app = FastAPI(
     version=settings.VERSION,
     description="Media tracking API for movies and TV shows",
     lifespan=lifespan
+)
+
+#SessionMiddleware
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.SECRET_KEY,  # Même clé que JWT
+    max_age=3600,
+    same_site="lax",
+    https_only=False  # True en production
 )
 
 # CORS

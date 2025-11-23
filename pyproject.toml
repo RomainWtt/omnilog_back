@@ -33,6 +33,8 @@ dependencies = [
     "redis>=5.0.0",
     "authlib>=1.3.0",
     "greenlet>=3.2.4",
+    "itsdangerous>=2.2.0",
+    "fastapi-mail>=1.5.8",
 ]
 
 [project.optional-dependencies]

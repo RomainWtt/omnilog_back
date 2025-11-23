@@ -53,9 +53,18 @@ class User(SQLModel, table=True):
     hashed_password: Optional[str] = None
     avatar_url: Optional[str] = None
     birth_date: Optional[date] = None
-    is_active: bool = Field(default=True)
+
+    # Séparation des responsabilités
+    is_active: bool = Field(default=True)  # Compte actif/désactivé (admin)
+    email_verified: bool = Field(default=False)  # Email vérifié (utilisateur)
+
     is_admin: bool = Field(default=False)
     is_public: bool = Field(default=True)
+
+    # Tokens de vérification d'email
+    email_verification_token: Optional[str] = Field(default=None, max_length=64)
+    email_verification_token_expires: Optional[datetime] = None
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
