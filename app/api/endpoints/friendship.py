@@ -27,6 +27,7 @@ router = APIRouter()
 )
 async def send_friend_request(
         user_two_id: str,
+        is_public: bool = False,
         current_user: UserRead = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session),
 ):
@@ -75,12 +76,16 @@ async def send_friend_request(
             detail=f"A relationship in status {existing_friendship.status.value} already exists."
         )
 
+    if is_public:
+        friendship = await crud_friendship.add_friends(
+            session, sender_id, receiver_id
+        )
+        return friendship
+
     # 2. Créer la demande
     friendship = await crud_friendship.create_friend_request(
         session, sender_id, receiver_id
     )
-
-
 
     return friendship
 

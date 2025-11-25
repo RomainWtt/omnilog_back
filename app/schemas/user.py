@@ -60,6 +60,7 @@ class UserPublic(BaseModel):
     username: str
     avatar_url: Optional[str] = None
     social_links: Optional[dict] = None
+    is_public: bool
 
     class Config:
         from_attributes = True
