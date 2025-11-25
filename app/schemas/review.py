@@ -5,16 +5,7 @@ from pydantic import BaseModel, Field
 from uuid import UUID
 from typing import Optional, List
 from datetime import datetime
-
-
-class UserPublic(BaseModel):
-    """Public user information for reviews"""
-    id: UUID
-    username: str
-    avatar_url: Optional[str] = None
-
-    class Config:
-        from_attributes = True
+from app.schemas.user import UserPublic
 
 
 class ReviewBase(BaseModel):

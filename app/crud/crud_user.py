@@ -4,6 +4,7 @@ from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import User
 from app.core.security import get_password_hash, verify_password
+from sqlalchemy import and_
 
 
 async def get_user_by_id(session: AsyncSession, user_id: UUID) -> Optional[User]:
@@ -25,8 +26,8 @@ async def get_user_by_username(session: AsyncSession, username: str) -> Optional
 
 
 async def get_user_by_email_or_username(
-    session: AsyncSession, 
-    identifier: str
+        session: AsyncSession,
+        identifier: str
 ) -> Optional[User]:
     """Get user by email or username"""
     result = await session.execute(
@@ -38,9 +39,9 @@ async def get_user_by_email_or_username(
 
 
 async def get_user_by_oauth_id(
-    session: AsyncSession,
-    provider: str,
-    oauth_id: str
+        session: AsyncSession,
+        provider: str,
+        oauth_id: str
 ) -> Optional[User]:
     """Get user by OAuth provider ID"""
     if provider == "google":
@@ -51,16 +52,16 @@ async def get_user_by_oauth_id(
         result = await session.execute(select(User).where(User.apple_id == oauth_id))
     else:
         return None
-    
+
     return result.scalar_one_or_none()
 
 
 async def create_user(
-    session: AsyncSession,
-    email: str,
-    username: str,
-    password: Optional[str] = None,
-    **kwargs
+        session: AsyncSession,
+        email: str,
+        username: str,
+        password: Optional[str] = None,
+        **kwargs
 ) -> User:
     """Create a new user"""
     user = User(
@@ -76,32 +77,32 @@ async def create_user(
 
 
 async def update_user(
-    session: AsyncSession,
-    user_id: UUID,
-    **update_data
+        session: AsyncSession,
+        user_id: UUID,
+        **update_data
 ) -> Optional[User]:
     """Update user information"""
     user = await get_user_by_id(session, user_id)
     if not user:
         return None
-    
+
     # If password is being updated, hash it
     if "password" in update_data and update_data["password"]:
         update_data["hashed_password"] = get_password_hash(update_data.pop("password"))
-    
+
     for key, value in update_data.items():
         if hasattr(user, key) and value is not None:
             setattr(user, key, value)
-    
+
     await session.commit()
     await session.refresh(user)
     return user
 
 
 async def authenticate_user(
-    session: AsyncSession,
-    identifier: str,
-    password: str
+        session: AsyncSession,
+        identifier: str,
+        password: str
 ) -> Optional[User]:
     """Authenticate user with email/username and password"""
     user = await get_user_by_email_or_username(session, identifier)
@@ -121,7 +122,7 @@ async def deactivate_user(session: AsyncSession, user_id: UUID) -> Optional[User
     user = await get_user_by_id(session, user_id)
     if not user:
         return None
-    
+
     user.is_active = False
     await session.commit()
     await session.refresh(user)
@@ -133,7 +134,7 @@ async def activate_user(session: AsyncSession, user_id: UUID) -> Optional[User]:
     user = await get_user_by_id(session, user_id)
     if not user:
         return None
-    
+
     user.is_active = True
     await session.commit()
     await session.refresh(user)
@@ -141,13 +142,12 @@ async def activate_user(session: AsyncSession, user_id: UUID) -> Optional[User]:
 
 
 async def get_all_users(
-    session: AsyncSession,
-    skip: int = 0,
-    limit: int = 100,
-    search: Optional[str] = None,
-    is_active: Optional[bool] = None
+        session: AsyncSession,
+        skip: int = 0,
+        limit: int = 100,
+        search: Optional[str] = None,
+        is_active: Optional[bool] = None
 ) -> list[User]:
-
     query = select(User).where(User.is_admin == False)
 
     if search:
@@ -164,12 +164,66 @@ async def get_all_users(
     result = await session.execute(query)
     return result.scalars().all()
 
+
 async def get_user_by_verification_token(
-    session: AsyncSession,
-    token: str
+        session: AsyncSession,
+        token: str
 ) -> Optional[User]:
     """Récupère un utilisateur par son token de vérification"""
     result = await session.execute(
         select(User).where(User.email_verification_token == token)
     )
     return result.scalar_one_or_none()
+
+
+from sqlalchemy import select, and_, or_
+from sqlalchemy.orm import aliased
+
+
+async def search_users_by_username(
+        session: AsyncSession,
+        username_query: str,
+        current_user_id: UUID,
+        limit: int = 20,
+        offset: int = 0,
+) -> list[User]:
+    """Recherche des utilisateurs actifs par pseudo, excluant les amis existants"""
+    search_pattern = f"%{username_query.lower()}%"
+
+    # Alias pour la table Friendship (si tu as un modèle)
+    # Sinon, utilise directement la table
+    from app.db.models import Friendship  # Ajuste selon ton import
+
+    # Sous-requête pour vérifier l'existence d'une amitié
+    # On vérifie les deux directions: (current_user, user) ET (user, current_user)
+    friendship_exists = select(Friendship.user_one_id).where(
+        or_(
+            and_(
+                Friendship.user_one_id == current_user_id,
+                Friendship.user_two_id == User.id
+            ),
+            and_(
+                Friendship.user_two_id == current_user_id,
+                Friendship.user_one_id == User.id
+            )
+        )
+    ).exists()
+
+    # Requête principale
+    query = (
+        select(User)
+        .where(
+            and_(
+                User.username.ilike(search_pattern),
+                User.id != current_user_id,
+                User.is_active == True,
+                User.is_admin == False,
+                ~friendship_exists  # Exclut si l'amitié existe
+            )
+        )
+        .limit(limit)
+        .offset(offset)
+    )
+
+    result = await session.execute(query)
+    return list(result.scalars().all())

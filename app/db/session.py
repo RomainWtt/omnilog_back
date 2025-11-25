@@ -1,3 +1,5 @@
+from time import process_time_ns
+
 from sqlmodel import create_engine, Session, SQLModel
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -20,7 +22,9 @@ async_session_maker = sessionmaker(
 
 async def get_session() -> AsyncSession:
     """Dependency to get database session"""
+    print("Récup de la session")
     async with async_session_maker() as session:
+        print(session)
         yield session
 
 

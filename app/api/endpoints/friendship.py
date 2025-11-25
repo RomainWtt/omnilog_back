@@ -2,11 +2,13 @@ import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Query, Depends, HTTPException, status
+from pydantic import UUID1
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Suppositions d'importation basées sur le contexte
-from app.crud import crud_friendship
+from app.crud import crud_friendship, crud_activity
 from app.core.deps import get_current_active_user
+from app.crud.crud_activity import add_accept_friend
 from app.db.session import get_session
 from app.schemas.friendship import FriendshipCreate, FriendshipRead, FriendshipStatus, FriendshipUpdate, \
     FriendProfileRead, FriendshipReadSimple
@@ -24,7 +26,7 @@ router = APIRouter()
     summary="Envoie une demande d'amitié (PENDING)."
 )
 async def send_friend_request(
-        friendship_data: FriendshipCreate,
+        user_two_id: str,
         current_user: UserRead = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session),
 ):
@@ -33,7 +35,7 @@ async def send_friend_request(
     et l'utilisateur spécifié (destinataire), avec le statut PENDING.
     """
     sender_id = current_user.id
-    receiver_id = friendship_data.user_two_id
+    receiver_id = uuid.UUID(user_two_id)
 
     if sender_id == receiver_id:
         raise HTTPException(
@@ -77,6 +79,8 @@ async def send_friend_request(
     friendship = await crud_friendship.create_friend_request(
         session, sender_id, receiver_id
     )
+
+
 
     return friendship
 
@@ -151,6 +155,10 @@ async def update_friendship_status(
         friendship.user_two_id,
         new_status.status
     )
+
+    if updated_friendship.user_two:
+        result = await add_accept_friend(session, friendship)
+        print(result)
 
     return updated_friendship
 
