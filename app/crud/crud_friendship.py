@@ -77,18 +77,22 @@ async def get_user_relationships(
     """
     if status == FriendshipStatus.PENDING:
         query = (select(Friendship)
-            .where(
-                (Friendship.user_two_id == user_id))
-            .limit(limit)
-            .offset(offset)
-        )
+                 .where(
+            (Friendship.user_two_id == user_id))
+                 .limit(limit)
+                 .offset(offset)
+                 )
     else:
         query = (select(Friendship)
-        .where(
-            (Friendship.user_one_id == user_id))
-        .limit(limit)
-        .offset(offset)
+                 .where(
+            or_(
+                Friendship.user_one_id == user_id,
+                Friendship.user_two_id == user_id
+            )
         )
+                 .limit(limit)
+                 .offset(offset)
+                 )
 
     if status is not None:
         query = query.where(Friendship.status == status)
