@@ -35,7 +35,8 @@ async def search_new_friends(
             "id": u.id,
             "username": u.username,
             "avatar_url": u.avatar_url,
-            "social_links": u.social_links
+            "social_links": u.social_links,
+            "is_public": u.is_public
         })
         for u in users
     ]

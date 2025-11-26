@@ -119,3 +119,20 @@ async def delete_friendship(
     await session.delete(friendship)
     await session.commit()
     return True
+
+
+async def add_friends(
+        session: AsyncSession, sender_id: UUID, receiver_id: UUID
+) -> Friendship:
+    """Crée une nouvelle demande d'amitié (PENDING)."""
+
+    # L'ordre d'insertion est (sender_id, receiver_id).
+    friendship = Friendship(
+        user_one_id=sender_id,
+        user_two_id=receiver_id,
+        status=FriendshipStatus.ACCEPTED,
+    )
+    session.add(friendship)
+    await session.commit()
+    await session.refresh(friendship)
+    return friendship
