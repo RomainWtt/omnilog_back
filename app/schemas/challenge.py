@@ -27,8 +27,7 @@ class ChallengeRead(ChallengeBase):
     id: UUID
     creator_id: UUID
     created_at: datetime
-    updated_at: datetime
-    #participants_count: Optional[int] = 0
+    updated_at: datetime  #participants_count: Optional[int] = 0
 
     class Config:
         from_attributes = True

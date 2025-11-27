@@ -3,10 +3,9 @@ from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select, or_
+from sqlmodel import select, or_, and_
 
-from app.crud.ChallengeStatus import ChallengeStatus
-from app.db.models import Challenge, User, ChallengeMembership
+from app.db.models import Challenge, User, ChallengeMembership, ChallengeStatus
 from app.schemas.challenge import ChallengeCreate
 
 
@@ -37,34 +36,47 @@ async def list_last_five_challenges(session: AsyncSession) -> list[Challenge]:
 
 
 async def search_challenges_details(
-        session: AsyncSession,
-        query: Optional[str] = None,
-        status: Optional[ChallengeStatus] = None
+    session: AsyncSession,
+    limit: int = 20,
+    offset: int = 0,
+    query: Optional[str] = None,
+    status: Optional[ChallengeStatus] = None
 ) -> list[Challenge]:
+
     stmt = select(Challenge)
+    conditions = []
 
     if query:
-        like_pattern = f"%{query}%"
-        stmt = stmt.where(
+        pattern = f"%{query}%"
+        conditions.append(
             or_(
-                Challenge.name.ilike(like_pattern),
-                Challenge.description.ilike(like_pattern)
+                Challenge.name.ilike(pattern),
+                Challenge.description.ilike(pattern)
             )
         )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     if status and status != ChallengeStatus.TOUS:
         if status == ChallengeStatus.A_VENIR:
-            stmt = stmt.where(Challenge.start_date > now)
+            conditions.append(Challenge.start_date > now)
+
         elif status == ChallengeStatus.EN_COURS:
-            stmt = stmt.where(
-                Challenge.start_date <= now,
-                Challenge.end_date >= now
+            conditions.append(
+                and_(
+                    Challenge.start_date <= now,
+                    Challenge.end_date >= now
+                )
             )
+
         elif status == ChallengeStatus.TERMINE:
-            stmt = stmt.where(Challenge.end_date < now)
+            conditions.append(Challenge.end_date < now)
+
+    if conditions:
+        stmt = stmt.where(and_(*conditions))
 
     stmt = stmt.order_by(Challenge.created_at.desc())
+    stmt = stmt.limit(limit).offset(offset)
 
     result = await session.execute(stmt)
-    return  result.scalars().all()
+    return result.scalars().all()
+
