@@ -42,6 +42,12 @@ class ActivityType(str, Enum):
     FRIEND_ADDED = "friend_added"
     CHALLENGE_JOINED = "challenge_joined"
 
+class ChallengeStatus(str, Enum):
+    TOUS = "tous"
+    A_VENIR = "a_venir"
+    EN_COURS = "en_cours"
+    TERMINE = "termine"
+
 
 # Models
 class User(SQLModel, table=True):
