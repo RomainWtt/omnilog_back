@@ -227,3 +227,4 @@ async def search_users_by_username(
 
     result = await session.execute(query)
     return list(result.scalars().all())
+

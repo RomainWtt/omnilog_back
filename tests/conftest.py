@@ -10,6 +10,9 @@ from unittest.mock import AsyncMock, patch
 from app.main import app
 from app.db.session import get_session
 from app.core.config import settings
+from uuid import uuid4
+from app.db.models import User
+from app.core.security import get_password_hash
 
 # Test database URL
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
@@ -113,3 +116,53 @@ async def authenticated_client(
     client.headers["Authorization"] = f"Bearer {tokens['access_token']}"
     
     yield client, tokens
+
+@pytest.fixture
+async def test_user(session: AsyncSession) -> User:
+    """Crée un utilisateur de test pour les notifications"""
+    user = User(
+        id=uuid4(),
+        username="notifuser",
+        email="notif@example.com",
+        hashed_password=get_password_hash("TestPass123"),
+        is_active=True,
+        email_verified=True,
+    )
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+@pytest.fixture
+async def test_user_2(session: AsyncSession) -> User:
+    """Crée un deuxième utilisateur de test pour les notifications"""
+    user = User(
+        id=uuid4(),
+        username="notifuser2",
+        email="notif2@example.com",
+        hashed_password=get_password_hash("TestPass123"),
+        is_active=True,
+        email_verified=True,
+    )
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+@pytest.fixture
+async def test_user_3(session: AsyncSession) -> User:
+    """Crée un troisième utilisateur de test pour les notifications"""
+    user = User(
+        id=uuid4(),
+        username="notifuser3",
+        email="notif3@example.com",
+        hashed_password=get_password_hash("TestPass123"),
+        is_active=True,
+        email_verified=True,
+    )
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user

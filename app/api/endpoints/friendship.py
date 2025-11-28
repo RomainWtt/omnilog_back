@@ -1,24 +1,23 @@
+# app/api/v1/friendships.py
+
 import uuid
-from typing import List, Optional
+from typing import List
 
 from fastapi import APIRouter, Query, Depends, HTTPException, status
-from pydantic import UUID1
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Suppositions d'importation basées sur le contexte
-from app.crud import crud_friendship, crud_activity
 from app.core.deps import get_current_active_user
+from app.crud import crud_friendship
 from app.crud.crud_activity import add_accept_friend
+from app.db.models import NotificationType
 from app.db.session import get_session
-from app.schemas.friendship import FriendshipCreate, FriendshipRead, FriendshipStatus, FriendshipUpdate, \
+from app.schemas.friendship import FriendshipStatus, FriendshipUpdate, \
     FriendProfileRead, FriendshipReadSimple
 from app.schemas.user import UserRead
-from app.db.models import User
-
+from app.services.notification_service import notification_service
 router = APIRouter()
 
 
-# --- POST /api/v1/friendships/ ---
 @router.post(
     "/",
     response_model=FriendshipReadSimple,
@@ -26,15 +25,11 @@ router = APIRouter()
     summary="Envoie une demande d'amitié (PENDING)."
 )
 async def send_friend_request(
-        user_two_id: str,
-        is_public: bool = False,
-        current_user: UserRead = Depends(get_current_active_user),
-        session: AsyncSession = Depends(get_session),
+    user_two_id: str,
+    is_public: bool = False,
+    current_user: UserRead = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_session),
 ):
-    """
-    Crée une nouvelle relation d'amitié entre l'utilisateur authentifié (expéditeur)
-    et l'utilisateur spécifié (destinataire), avec le statut PENDING.
-    """
     sender_id = current_user.id
     receiver_id = uuid.UUID(user_two_id)
 
@@ -44,7 +39,7 @@ async def send_friend_request(
             detail="User cannot send a friend request to yourself."
         )
 
-    # 1. Vérifier si une relation existe déjà (dans les deux sens)
+    # 1. Vérifier si une relation existe déjà
     existing_friendship = await crud_friendship.get_friendship(
         session, sender_id, receiver_id
     )
@@ -52,13 +47,11 @@ async def send_friend_request(
     if existing_friendship:
         if existing_friendship.status == FriendshipStatus.PENDING:
             if existing_friendship.user_one_id == sender_id:
-                # Alice -> Bob est déjà PENDING (Duplicata)
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Friend request already sent and pending."
                 )
             else:
-                # Bob -> Alice est déjà PENDING (Déjà reçu)
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Friend request already received and pending. Please use PUT to accept/decline."
@@ -70,7 +63,6 @@ async def send_friend_request(
                 detail="Users are already friends."
             )
 
-        # Si c'est BLOCKED ou DECLINED, nous interdisons l'envoi si une relation existe déjà.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"A relationship in status {existing_friendship.status.value} already exists."
@@ -87,6 +79,15 @@ async def send_friend_request(
         session, sender_id, receiver_id
     )
 
+    # 3. 🆕 Envoyer la notification via le service (1 ligne !)
+    await notification_service.send_notification(
+        session=session,
+        user_id=receiver_id,
+        actor_id=sender_id,
+        notification_type=NotificationType.FRIEND_REQUEST,
+        data={"friendship_id": str(friendship.user_one_id)}
+    )
+
     return friendship
 
 
@@ -96,14 +97,14 @@ async def send_friend_request(
     summary="Met à jour le statut d'une demande d'amitié (ACCEPT/DECLINE/BLOCK)."
 )
 async def update_friendship_status(
-        user_id: uuid.UUID,
-        new_status: FriendshipUpdate,
-        current_user: UserRead = Depends(get_current_active_user),
-        session: AsyncSession = Depends(get_session),
+    user_id: uuid.UUID,
+    new_status: FriendshipUpdate,
+    current_user: UserRead = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_session),
 ):
     current_user_id = current_user.id
 
-    # 1. Récupération de la relation (dans les 2 sens)
+    # 1. Récupération de la relation
     friendship = await crud_friendship.get_friendship(
         session, current_user_id, user_id
     )
@@ -114,8 +115,7 @@ async def update_friendship_status(
             detail="Friendship not found."
         )
 
-    # 2. --- Cas BLOCKED ---
-    # Les deux utilisateurs peuvent bloquer l'autre, quel que soit le statut actuel
+    # 2. Cas BLOCKED
     if new_status.status == FriendshipStatus.BLOCKED:
         updated_friendship = await crud_friendship.update_friendship_status(
             session,
@@ -125,35 +125,28 @@ async def update_friendship_status(
         )
         return updated_friendship
 
-    # 3. --- Cas ACCEPT / DECLINE ---
-    # Ces actions sont UNIQUEMENT autorisées si la relation est PENDING
+    # 3. Cas ACCEPT / DECLINE
     if friendship.status == FriendshipStatus.PENDING:
-
-        # Expéditeur de la demande → NE PEUT PAS accepter/refuser
         if friendship.user_one_id == current_user_id:
             if new_status.status in (FriendshipStatus.ACCEPTED, FriendshipStatus.DECLINED):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Only the recipient can manage a pending request."
                 )
-
-        # Destinataire → peut ACCEPT / DECLINE
         elif friendship.user_two_id == current_user_id:
             if new_status.status not in (FriendshipStatus.ACCEPTED, FriendshipStatus.DECLINED):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Recipient can only ACCEPT or DECLINE a pending request."
                 )
-
     else:
-        # Si on n'est PAS en PENDING → seuls BLOCKED est autorisé (déjà géré plus haut)
         if new_status.status in (FriendshipStatus.ACCEPTED, FriendshipStatus.DECLINED):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot accept or decline a non-pending relationship."
             )
 
-    # 4. Mise à jour générique
+    # 4. Mise à jour
     updated_friendship = await crud_friendship.update_friendship_status(
         session,
         friendship.user_one_id,
@@ -161,9 +154,29 @@ async def update_friendship_status(
         new_status.status
     )
 
-    if updated_friendship.user_two:
-        result = await add_accept_friend(session, friendship)
-        print(result)
+    # 5. 🆕 Si accepté, notifier l'initiateur (1 ligne !)
+    if new_status.status == FriendshipStatus.ACCEPTED:
+        await notification_service.send_notification(
+            session=session,
+            user_id=friendship.user_one_id,
+            actor_id=current_user_id,
+            notification_type=NotificationType.FRIEND_ACCEPTED,
+            data={"friendship_id": str(friendship.user_one_id)}
+        )
+
+        if updated_friendship.user_two:
+            result = await add_accept_friend(session, friendship)
+            print(result)
+
+        # 🆕 Notifier si refusé
+    elif new_status.status == FriendshipStatus.DECLINED:
+        await notification_service.send_notification(
+            session=session,
+            user_id=friendship.user_one_id,
+            actor_id=current_user_id,
+            notification_type=NotificationType.FRIEND_DECLINED,
+            data={"friendship_id": str(friendship.user_one_id)}
+        )
 
     return updated_friendship
 

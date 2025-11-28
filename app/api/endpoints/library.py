@@ -10,9 +10,10 @@ from app.schemas.media import (
     UserMediaEntryWithMedia,
     ProgressUpdate
 )
-from app.db.models import ListStatus, User
+from app.db.models import ListStatus, User, NotificationType
 from app.crud import crud_media
 from app.core.deps import get_current_active_user
+from app.services.notification_service import notification_service
 
 router = APIRouter()
 
@@ -257,14 +258,42 @@ async def toggle_favorite(
             list_status=ListStatus.FAVORITE,
             is_favorite=True
         )
+
+        # 🆕 Notifier les amis
+        media = await crud_media.get_media_by_id(session, media_id)
+        await notification_service.notify_all_friends(
+            session=session,
+            user_id=current_user.id,
+            notification_type=NotificationType.FAVORITE_ADDED,
+            data={
+                "media_id": str(media_id),
+                "media_title": media.title if media else "un média"
+            }
+        )
+
         return entry
 
     # Toggle favorite
+    was_favorite = entry.is_favorite
+
     updated_entry = await crud_media.update_user_media_entry(
         session=session,
         user_id=current_user.id,
         media_id=media_id,
         is_favorite=not entry.is_favorite
     )
+
+    # 🆕 Notifier seulement si passage en favori (pas si retrait)
+    if updated_entry.is_favorite and not was_favorite:
+        media = await crud_media.get_media_by_id(session, media_id)
+        await notification_service.notify_all_friends(
+            session=session,
+            user_id=current_user.id,
+            notification_type=NotificationType.FAVORITE_ADDED,
+            data={
+                "media_id": str(media_id),
+                "media_title": media.title if media else "un média"
+            }
+        )
 
     return updated_entry
