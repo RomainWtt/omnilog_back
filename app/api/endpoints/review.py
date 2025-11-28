@@ -1,10 +1,15 @@
 """
 API routes for reviews/comments
 """
+from typing import Optional
+
 from fastapi import APIRouter, Query, HTTPException, Depends, status
 from uuid import UUID
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.crud.crud_review import search_reviews_by_query
 from app.schemas.review import (
     ReviewRead,
     ReviewCreate,
@@ -15,6 +20,7 @@ from app.schemas.review import (
 from app.crud import crud_review
 from app.db.session import get_session
 from app.core.deps import get_current_user
+from app.db.models import User, Review
 from app.db.models import User, NotificationType
 from app.services.notification_service import notification_service
 
@@ -164,9 +170,11 @@ async def get_user_reviews(
     }
 
 
+
 # ============================================
 # GENERAL ROUTES (static paths)
 # ============================================
+
 
 @router.get("/recent", response_model=list[ReviewRead])
 async def get_recent_reviews(
@@ -187,6 +195,16 @@ async def get_recent_reviews(
     return [ReviewRead.model_validate(review) for review in reviews]
 
 
+@router.get("/review/search", response_model=list[ReviewRead])
+async def admin_search_reviews(
+    query: str = Query(..., min_length=1, description="Search query with username, media title, content"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    is_reported: Optional[bool] = None
+):
+    return await search_reviews_by_query(query=query, session=session, limit=limit, offset=offset, is_reported=is_reported)
+
 # ============================================
 # REVIEW CRUD ROUTES (generic {review_id} must come last)
 # ============================================
@@ -199,6 +217,12 @@ async def create_review(
 ):
     """
     Create a new review/comment for a media.
+
+    - **rating**: Rating from 1-5 (required)
+    - **content**: Review text (optional, max 5000 chars)
+    - **media_id**: ID of the media being reviewed
+
+    Users can only have one review per media.
     """
     # Check if user already has a VISIBLE review for this media
     existing_review = await crud_review.get_user_visible_review_for_media(
@@ -241,6 +265,7 @@ async def create_review(
     )
 
     return ReviewRead.model_validate(review)
+
 
 
 @router.get("/{review_id}", response_model=ReviewRead)

@@ -22,7 +22,7 @@ async def search_new_friends(
     PAGE_SIZE = 20
     offset = (page - 1) * PAGE_SIZE
 
-    users = await crud_user.search_users_by_username(
+    users = await crud_user.search_users_friendship_by_username(
         session=session,
         username_query=q.strip(),
         current_user_id=current_user.id,
@@ -42,9 +42,22 @@ async def search_new_friends(
     ]
 
 
+@router.get("/admin/search", response_model=list[UserRead])
+async def search_user_admin(
+    query: str,
+    is_active: bool | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    return await crud_user.search_users_by_query(
+        query=query,
+        session=session,
+        is_active=is_active,
+    )
+
+
 @router.get("/me", response_model=UserRead)
 async def get_current_user_profile(
-        current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     Get current user's profile
@@ -60,7 +73,6 @@ async def update_current_user_profile(
 ):
     """
     Update current user's profile
-    
     Can update: email, username, password, avatar_url, birth_date, social_links
     """
     if user_update.email and user_update.email != current_user.email:
@@ -203,16 +215,13 @@ async def get_all_users(
         is_active: bool | None = None,
         session: AsyncSession = Depends(get_session)
 ):
-    users = await crud_user.get_all_users(
+    users = await crud_user.get_users_list(
         session=session,
         skip=skip,
         limit=limit,
         search=search,
         is_active=is_active
     )
-
-    if not users:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No users found")
 
     return users
 

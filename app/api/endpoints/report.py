@@ -43,6 +43,7 @@ async def list_all_reports(
     return await crud_report.get_all_reports(session)
 
 
+"""
 @router.get("/by_ids", response_model=List[ReviewReportRead])
 async def list_reports_for_reviews_by_id(
     review_ids: List[UUID] = Query(..., description="Liste des review_id à vérifier"),
@@ -57,3 +58,4 @@ async def list_reports_for_reviews_by_id(
     )
     reports = result.scalars().all()
     return reports
+"""

@@ -4,12 +4,13 @@ CRUD operations for reviews/comments
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from sqlalchemy import func, delete
+from sqlalchemy import func, delete, and_, or_, exists
 from uuid import UUID
 from datetime import datetime
 
-from app.db.models import Review, User
+from app.db.models import Review, User, Media, ReviewReport
 from sqlmodel import select
+
 
 
 async def create_review(
@@ -151,6 +152,8 @@ async def get_user_reviews(
     return list(result.scalars().all())
 
 
+
+
 async def update_review(
         session: AsyncSession,
         review_id: UUID,
@@ -275,6 +278,46 @@ async def unhide_review(
     await session.refresh(review)
 
     return review
+
+
+async def search_reviews_by_query(
+    session: AsyncSession,
+    query: str,
+    limit: int = 20,
+    offset: int = 0,
+    is_reported: Optional[bool] = None
+) -> list[Review]:
+    stmt = (
+        select(Review)
+        .options(
+            selectinload(Review.user),
+            selectinload(Review.media),
+            selectinload(Review.reports)
+        )
+        .outerjoin(User)
+        .outerjoin(Media)
+        .where(
+            or_(
+                Review.content.ilike(f"%{query}%"),
+                User.username.ilike(f"%{query}%"),
+                Media.title.ilike(f"%{query}%"),
+                Media.original_title.ilike(f"%{query}%")
+            )
+        )
+    )
+
+    if is_reported is True:
+        stmt = stmt.where(
+            exists().where(ReviewReport.review_id == Review.id)
+        )
+    elif is_reported is False:
+        stmt = stmt.where(
+            ~exists().where(ReviewReport.review_id == Review.id)
+        )
+
+    stmt = stmt.order_by(Review.created_at.desc()).offset(offset).limit(limit)
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
 
 
 async def get_user_review_for_media(
