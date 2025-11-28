@@ -6,6 +6,7 @@ from app.db.models import User
 from app.core.security import get_password_hash, verify_password
 from sqlalchemy import and_
 
+from sqlalchemy import select, and_, or_
 
 async def get_user_by_id(session: AsyncSession, user_id: UUID) -> Optional[User]:
     """Get user by ID"""
@@ -141,7 +142,7 @@ async def activate_user(session: AsyncSession, user_id: UUID) -> Optional[User]:
     return user
 
 
-async def get_all_users(
+async def get_users_list(
         session: AsyncSession,
         skip: int = 0,
         limit: int = 100,
@@ -176,11 +177,35 @@ async def get_user_by_verification_token(
     return result.scalar_one_or_none()
 
 
-from sqlalchemy import select, and_, or_
-from sqlalchemy.orm import aliased
+# rechercher un user (principalement pour trouver pour l'admin)
+async def search_users_by_query(
+    query: str,
+    session: AsyncSession,
+    is_active: bool | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> list[User]:
+
+    stmt = select(User).where(
+        and_(
+            or_(
+                User.username.ilike(f"%{query}%"),
+                User.email.ilike(f"%{query}%"),
+            ),
+            User.is_admin == False,
+        )
+    )
+
+    if is_active is not None:
+        stmt = stmt.where(User.is_active == is_active)
+
+    stmt = stmt.offset(offset).limit(limit)
+
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
 
 
-async def search_users_by_username(
+async def search_users_friendship_by_username(
         session: AsyncSession,
         username_query: str,
         current_user_id: UUID,
