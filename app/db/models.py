@@ -279,3 +279,37 @@ class Activity(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
     
     user: User = Relationship(back_populates="activities")
+
+# À Notifications
+
+class NotificationType(str, Enum):
+    FRIEND_REQUEST = "friend_request"
+    FRIEND_ACCEPTED = "friend_accepted"
+    FRIEND_DECLINED = "friend_declined"
+    FAVORITE_ADDED = "favorite_added"
+    REVIEW_POSTED = "review_posted"
+    CHALLENGE = "challenge"
+
+class Notification(SQLModel, table=True):
+    __tablename__ = "notifications"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key="users.id", index=True)  # Destinataire
+    actor_id: Optional[UUID] = Field(default=None, foreign_key="users.id")  # Celui qui fait l'action
+
+    notification_type: NotificationType
+
+    # Données contextuelles (JSON flexible)
+    data: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+
+    read: bool = Field(default=False, index=True)  # Index pour filtrer rapidement
+
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+    # Relations
+    user: User = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "[Notification.user_id]"}
+    )
+    actor: Optional[User] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "[Notification.actor_id]"}
+    )

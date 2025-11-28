@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.api.endpoints import websocket
 from app.core.config import settings
 from app.api.router import api_router
 from app.db.session import init_db
@@ -55,6 +56,9 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+#Les websockets ne doivent pas avoir de préfix askip
+app.include_router(websocket.router)
 
 @app.get("/")
 async def root():

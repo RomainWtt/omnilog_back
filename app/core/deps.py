@@ -3,10 +3,13 @@ from uuid import UUID
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.crud import crud_user
 from app.db.session import get_session
 from app.core.security import decode_token
 from app.crud.crud_user import get_user_by_id
 from app.db.models import User
+from app.core.security import decode_token
 
 security = HTTPBearer()
 
@@ -105,3 +108,18 @@ async def get_optional_current_user(
         return None
 
     return None
+
+
+async def get_current_active_user_ws(token: str, session: AsyncSession):
+    """Authentifie l'utilisateur pour WebSocket"""
+    payload = decode_token(token)
+    if not payload:
+        return None
+
+    user_id = payload.get("sub")
+    user = await crud_user.get_user_by_id(session, user_id)
+
+    if not user or not user.is_active:
+        return None
+
+    return user

@@ -15,7 +15,8 @@ from app.schemas.review import (
 from app.crud import crud_review
 from app.db.session import get_session
 from app.core.deps import get_current_user
-from app.db.models import User
+from app.db.models import User, NotificationType
+from app.services.notification_service import notification_service
 
 router = APIRouter()
 
@@ -198,12 +199,6 @@ async def create_review(
 ):
     """
     Create a new review/comment for a media.
-
-    - **rating**: Rating from 1-5 (required)
-    - **content**: Review text (optional, max 5000 chars)
-    - **media_id**: ID of the media being reviewed
-
-    Users can only have one review per media.
     """
     # Check if user already has a VISIBLE review for this media
     existing_review = await crud_review.get_user_visible_review_for_media(
@@ -218,12 +213,31 @@ async def create_review(
             detail="already reviewed"
         )
 
+    # 1. Créer la review (CRUD pur, sans notification)
     review = await crud_review.create_review(
         session=session,
         user_id=current_user.id,
         media_id=review_data.media_id,
         rating=review_data.rating,
         content=review_data.content
+    )
+
+    # 2. 🆕 Récupérer le titre du média
+    from app.crud import crud_media
+    media = await crud_media.get_media_by_id(session, review_data.media_id)
+    media_title = media.title if media else "un média"
+
+    # 3. 🆕 Notifier tous les amis via le service
+    await notification_service.notify_all_friends(
+        session=session,
+        user_id=current_user.id,
+        notification_type=NotificationType.REVIEW_POSTED,
+        data={
+            "media_id": str(review_data.media_id),
+            "media_title": media_title,
+            "review_id": str(review.id),
+            "has_content": review_data.content is not None and len(review_data.content) > 0
+        }
     )
 
     return ReviewRead.model_validate(review)
