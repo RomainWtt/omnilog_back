@@ -1,8 +1,11 @@
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
+
+from fastapi import HTTPException
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import User
+from app.db.models import User, Review
 from app.core.security import get_password_hash, verify_password
 from sqlalchemy import and_
 
@@ -119,12 +122,21 @@ async def authenticate_user(
 
 
 async def deactivate_user(session: AsyncSession, user_id: UUID) -> Optional[User]:
-    """Deactivate user account"""
     user = await get_user_by_id(session, user_id)
     if not user:
         return None
 
+    if user.is_admin:
+        raise HTTPException(400, "Admin accounts cannot be deactivated")
+
     user.is_active = False
+
+    await session.execute(
+        Review.__table__.update()
+        .where(Review.user_id == user_id)
+        .values(is_visible=False, updated_at=datetime.utcnow())
+    )
+
     await session.commit()
     await session.refresh(user)
     return user
@@ -137,6 +149,13 @@ async def activate_user(session: AsyncSession, user_id: UUID) -> Optional[User]:
         return None
 
     user.is_active = True
+
+    await session.execute(
+        Review.__table__.update()
+        .where(Review.user_id == user_id)
+        .values(is_visible=True, updated_at=datetime.utcnow())
+    )
+
     await session.commit()
     await session.refresh(user)
     return user
