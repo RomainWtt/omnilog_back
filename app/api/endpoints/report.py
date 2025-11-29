@@ -1,12 +1,9 @@
-from typing import List
-
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from app.core.deps import get_current_active_user
 from app.crud import crud_report
-from app.db.models import ReviewReport
+from app.crud.crud_report import approve_report_by_id, reject_report_by_id
 from app.db.session import get_session
 from app.schemas.report import ReviewReportCreate, ReviewReportRead
 
@@ -32,7 +29,7 @@ async def list_reports_for_review(
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_active_user)
 ):
-    return await crud_report.get_reports_for_review(session, review_id)
+    return await crud_report.get_reports_by_review_id(session, review_id)
 
 
 @router.get("/all", response_model=list[ReviewReportRead])
@@ -42,6 +39,20 @@ async def list_all_reports(
 ):
     return await crud_report.get_all_reports(session)
 
+@router.post("/{report_id}/approve")
+async def approve_report(
+    report_id: UUID,
+    session: AsyncSession = Depends(get_session)
+):
+    return await approve_report_by_id(session, report_id)
+
+
+@router.post("/{report_id}/reject")
+async def reject_report(
+    report_id: UUID,
+     session: AsyncSession = Depends(get_session)
+):
+    return await reject_report_by_id(session, report_id)
 
 """
 @router.get("/by_ids", response_model=List[ReviewReportRead])

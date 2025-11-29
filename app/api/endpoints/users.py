@@ -161,13 +161,10 @@ async def get_user_by_username(
 
 @router.post("/{user_id}/deactivate", response_model=UserRead)
 async def deactivate_user(
-        user_id: UUID,
-        session: AsyncSession = Depends(get_session),
-        admin_user: User = Depends(get_current_admin_user)
+    user_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    admin_user: User = Depends(get_current_admin_user)
 ):
-    """
-    Deactivate a user account (Admin only)
-    """
     user = await crud_user.get_user_by_id(session, user_id)
 
     if not user:
@@ -176,14 +173,9 @@ async def deactivate_user(
             detail="User not found"
         )
 
-    if user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot deactivate admin users"
-        )
-
     deactivated_user = await crud_user.deactivate_user(session, user_id)
     return deactivated_user
+
 
 
 @router.post("/{user_id}/activate", response_model=UserRead)
