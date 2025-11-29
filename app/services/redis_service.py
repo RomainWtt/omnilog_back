@@ -111,4 +111,36 @@ class RedisService:
         return await self.delete("top_media")
 
 
+    async def get_genre_media(self, genre_id: int, media_type: str = "all") -> Optional[list[dict]]:
+        """Get cached media for a specific genre"""
+        key = f"genre_{genre_id}_{media_type}"
+        return await self.get(key)
+
+
+    async def set_genre_media(self, genre_id: int, media: list[dict], media_type: str = "all", ttl: int = 86400) -> bool:
+        """Cache media for a specific genre (24 hour TTL by default)"""
+        key = f"genre_{genre_id}_{media_type}"
+        # Ensure each item has media_type
+        for item in media:
+            if "media_type" not in item:
+                item["media_type"] = media_type if media_type in ["movie", "tv"] else "movie"
+        return await self.set(key, media, ttl)
+
+
+    async def clear_genre_cache(self, genre_id: int) -> bool:
+        """Clear cache for a specific genre (all media types)"""
+        if not self._client:
+            await self.connect()
+
+        # Delete all variations (all, movie, tv)
+        keys = [
+            f"genre_{genre_id}_all",
+            f"genre_{genre_id}_movie",
+            f"genre_{genre_id}_tv"
+        ]
+        deleted = 0
+        for key in keys:
+            deleted += await self._client.delete(key)
+        return deleted > 0
+
 redis_service = RedisService()
