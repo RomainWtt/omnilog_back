@@ -71,12 +71,44 @@ class RedisService:
         return await self.get("top_movies")
     
     async def set_top_movies(self, movies: list[dict], ttl: int = 86400) -> bool:
-        """Cache top movies (24 hour TTL by default)"""
+        """Cache top movies with media_type field (24 hour TTL by default)"""
+        # Ensure each movie has media_type
+        for movie in movies:
+            if "media_type" not in movie:
+                movie["media_type"] = "movie"
         return await self.set("top_movies", movies, ttl)
     
     async def clear_top_movies(self) -> bool:
         """Clear top movies cache"""
         return await self.delete("top_movies")
+    
+    async def get_top_tv(self) -> Optional[list[dict]]:
+        """Get cached top TV shows"""
+        return await self.get("top_tv")
+    
+    async def set_top_tv(self, shows: list[dict], ttl: int = 86400) -> bool:
+        """Cache top TV shows with media_type field (24 hour TTL by default)"""
+        # Ensure each show has media_type
+        for show in shows:
+            if "media_type" not in show:
+                show["media_type"] = "tv"
+        return await self.set("top_tv", shows, ttl)
+    
+    async def clear_top_tv(self) -> bool:
+        """Clear top TV cache"""
+        return await self.delete("top_tv")
+    
+    async def get_top_media(self) -> Optional[list[dict]]:
+        """Get cached combined top media (movies + TV)"""
+        return await self.get("top_media")
+    
+    async def set_top_media(self, media: list[dict], ttl: int = 86400) -> bool:
+        """Cache combined top media (24 hour TTL by default)"""
+        return await self.set("top_media", media, ttl)
+    
+    async def clear_top_media(self) -> bool:
+        """Clear combined top media cache"""
+        return await self.delete("top_media")
 
 
 redis_service = RedisService()

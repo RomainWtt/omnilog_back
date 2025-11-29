@@ -284,19 +284,24 @@ async def get_media_by_tmdb_id(
 
 @router.get("/top/movies", response_model=dict)
 async def get_top_movies(
-        page: int = Query(1, ge=1, le=10),
+        page: int = Query(1, ge=1, le=25),
         session: AsyncSession = Depends(get_session)
 ):
     """
     Get top rated movies (cached for performance)
+    Each item includes media_type: "movie"
     """
     # Check Redis cache
     cached_movies = await redis_service.get_top_movies()
 
     if cached_movies:
+        # Return requested page from cache
+        start_idx = (page - 1) * 20
+        end_idx = start_idx + 20
         return {
-            "results": cached_movies,
+            "results": cached_movies[start_idx:end_idx],
             "page": page,
+            "total_pages": 25,
             "source": "cache"
         }
 
@@ -306,9 +311,11 @@ async def get_top_movies(
         all_movies = []
         for p in range(1, 26):  # 25 pages * 20 = 500 movies
             tmdb_results = await tmdb_service.get_top_rated_movies(p)
+            for movie in tmdb_results.get("results", []):
+                movie["media_type"] = "movie"
             all_movies.extend(tmdb_results.get("results", []))
 
-        # Store in Redis
+        # Store in Redis (media_type is added by set_top_movies)
         await redis_service.set_top_movies(all_movies[:500])
 
         # Return requested page
@@ -327,3 +334,136 @@ async def get_top_movies(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching top movies: {str(e)}"
         )
+
+
+@router.get("/top/tv", response_model=dict)
+async def get_top_tv(
+        page: int = Query(1, ge=1, le=25),
+        session: AsyncSession = Depends(get_session)
+):
+    """
+    Get top rated TV shows (cached for performance)
+    Each item includes media_type: "tv"
+    """
+    # Check Redis cache
+    cached_tv = await redis_service.get_top_tv()
+
+    if cached_tv:
+        start_idx = (page - 1) * 20
+        end_idx = start_idx + 20
+        return {
+            "results": cached_tv[start_idx:end_idx],
+            "page": page,
+            "total_pages": 25,
+            "source": "cache"
+        }
+
+    # Fetch from TMDB
+    try:
+        all_tv = []
+        for p in range(1, 26):
+            tmdb_results = await tmdb_service.get_top_rated_tv(p)
+            for show in tmdb_results.get("results", []):
+                show["media_type"] = "tv"  # Add media_type
+            all_tv.extend(tmdb_results.get("results", []))
+
+        # Store in Redis
+        await redis_service.set_top_tv(all_tv[:500])
+
+        start_idx = (page - 1) * 20
+        end_idx = start_idx + 20
+
+        return {
+            "results": all_tv[start_idx:end_idx],
+            "page": page,
+            "total_pages": 25,
+            "source": "tmdb"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching top TV shows: {str(e)}"
+        )
+
+
+@router.get("/top/all", response_model=dict)
+async def get_top_media(
+        page: int = Query(1, ge=1, le=25),
+        session: AsyncSession = Depends(get_session)
+):
+    """
+    Get top rated media (movies + TV combined, sorted by vote_average)
+    Each item includes media_type: "movie" or "tv"
+    """
+    # Check Redis cache
+    cached_media = await redis_service.get_top_media()
+
+    if cached_media:
+        start_idx = (page - 1) * 20
+        end_idx = start_idx + 20
+        return {
+            "results": cached_media[start_idx:end_idx],
+            "page": page,
+            "total_pages": 25,
+            "source": "cache"
+        }
+
+    # Fetch both movies and TV from cache or TMDB
+    try:
+        # Get movies
+        cached_movies = await redis_service.get_top_movies()
+        if not cached_movies:
+            all_movies = []
+            for p in range(1, 26):
+                tmdb_results = await tmdb_service.get_top_rated_movies(p)
+                for movie in tmdb_results.get("results", []):
+                    movie["media_type"] = "movie"
+                all_movies.extend(tmdb_results.get("results", []))
+            cached_movies = all_movies[:500]
+            await redis_service.set_top_movies(cached_movies)
+
+        # Get TV
+        cached_tv = await redis_service.get_top_tv()
+        if not cached_tv:
+            all_tv = []
+            for p in range(1, 26):
+                tmdb_results = await tmdb_service.get_top_rated_tv(p)
+                for show in tmdb_results.get("results", []):
+                    show["media_type"] = "tv"
+                all_tv.extend(tmdb_results.get("results", []))
+            cached_tv = all_tv[:500]
+            await redis_service.set_top_tv(cached_tv)
+
+        # Combine and sort by vote_average
+        all_media = cached_movies + cached_tv
+        all_media.sort(key=lambda x: x.get("vote_average", 0), reverse=True)
+        all_media = all_media[:500]
+
+        # Cache combined result
+        await redis_service.set_top_media(all_media)
+
+        start_idx = (page - 1) * 20
+        end_idx = start_idx + 20
+
+        return {
+            "results": all_media[start_idx:end_idx],
+            "page": page,
+            "total_pages": 25,
+            "source": "tmdb"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching top media: {str(e)}"
+        )
+
+
+@router.delete("/cache/clear", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_media_cache():
+    """Clear all media caches (admin utility)"""
+    await redis_service.clear_top_movies()
+    await redis_service.clear_top_tv()
+    await redis_service.clear_top_media()
+    return None
