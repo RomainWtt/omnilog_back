@@ -115,11 +115,41 @@ class TMDBService:
                 )
             return response.json()
     
+    async def get_top_rated_tv(self, page: int = 1) -> dict[str, Any]:
+        """Get top rated TV shows"""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/tv/top_rated",
+                headers=self.headers,
+                params={"page": page, "language": "en-US"}
+            )
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="TMDB API is unavailable"
+                )
+            return response.json()
+    
     async def get_popular_movies(self, page: int = 1) -> dict[str, Any]:
         """Get popular movies"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{self.base_url}/movie/popular",
+                headers=self.headers,
+                params={"page": page, "language": "en-US"}
+            )
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="TMDB API is unavailable"
+                )
+            return response.json()
+    
+    async def get_popular_tv(self, page: int = 1) -> dict[str, Any]:
+        """Get popular TV shows"""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/tv/popular",
                 headers=self.headers,
                 params={"page": page, "language": "en-US"}
             )
