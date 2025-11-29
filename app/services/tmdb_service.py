@@ -190,6 +190,60 @@ class TMDBService:
             if response.status_code != 200:
                 return {"results": []}
             return response.json()
+    async def discover_movies_by_genre(
+        self,
+        genre_id: int,
+        page: int = 1,
+        sort_by: str = "vote_average.desc"
+    ) -> dict[str, Any]:
+        """Discover movies by genre, sorted by rating"""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/discover/movie",
+                headers=self.headers,
+                params={
+                    "with_genres": genre_id,
+                    "sort_by": sort_by,
+                    "vote_count.gte": 100,
+                    "page": page,
+                    "language": "en-US"
+                }
+            )
+            if response.status_code != 200:
+                print(f"TMDB API error for genre {genre_id}, page {page}: {response.status_code}")
+                print(f"Response: {response.text}")
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="TMDB API is unavailable"
+                )
+            return response.json()
 
+    async def discover_tv_by_genre(
+        self,
+        genre_id: int,
+        page: int = 1,
+        sort_by: str = "vote_average.desc"
+    ) -> dict[str, Any]:
+        """Discover TV shows by genre, sorted by rating"""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/discover/tv",
+                headers=self.headers,
+                params={
+                    "with_genres": genre_id,
+                    "sort_by": sort_by,
+                    "vote_count.gte": 100,
+                    "page": page,
+                    "language": "en-US"
+                }
+            )
+            if response.status_code != 200:
+                print(f"TMDB API error for TV genre {genre_id}, page {page}: {response.status_code}")
+                print(f"Response: {response.text}")
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="TMDB API is unavailable"
+                )
+            return response.json()
 
 tmdb_service = TMDBService()

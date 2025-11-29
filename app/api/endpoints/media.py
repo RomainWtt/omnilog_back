@@ -460,6 +460,140 @@ async def get_top_media(
         )
 
 
+@router.get("/top/genre/{genre_id}", response_model=dict)
+async def get_top_media_by_genre(
+        genre_id: int,
+        media_type: Optional[MediaType] = Query(None, description="Filter by media type (movie or tv)"),
+        page: int = Query(1, ge=1, le=25),
+        session: AsyncSession = Depends(get_session)
+):
+    """
+    Get top rated media filtered by genre (cached for performance)
+    Fetches from TMDB's discover endpoint and caches results
+    """
+    # Determine cache key based on media_type
+    cache_type = "all" if not media_type else media_type.value
+
+    # Check Redis cache
+    try:
+        cached_media = await redis_service.get_genre_media(genre_id, cache_type)
+
+        if cached_media:
+            start_idx = (page - 1) * 20
+            end_idx = start_idx + 20
+            return {
+                "results": cached_media[start_idx:end_idx],
+                "page": page,
+                "total_pages": min(25, len(cached_media) // 20 + 1),
+                "source": "cache"
+            }
+    except Exception as e:
+        # Log cache error but continue to fetch from TMDB
+        print(f"Cache error for genre {genre_id}: {str(e)}")
+
+    # Fetch from TMDB
+    try:
+        all_media = []
+
+        # Fetch multiple pages to get enough content (10 pages = 200 items)
+        pages_to_fetch = 10
+
+        if not media_type or media_type == MediaType.MOVIE:
+            try:
+                for p in range(1, pages_to_fetch + 1):
+                    movie_results = await tmdb_service.discover_movies_by_genre(
+                        genre_id=genre_id,
+                        page=p
+                    )
+
+                    if not movie_results or "results" not in movie_results:
+                        break
+
+                    for movie in movie_results.get("results", []):
+                        movie["media_type"] = "movie"
+                        all_media.append(movie)
+
+                    # Stop if we got less than 20 results (last page)
+                    if len(movie_results.get("results", [])) < 20:
+                        break
+            except Exception as e:
+                print(f"Error fetching movies for genre {genre_id}: {str(e)}")
+
+        if not media_type or media_type == MediaType.TV:
+            try:
+                for p in range(1, pages_to_fetch + 1):
+                    tv_results = await tmdb_service.discover_tv_by_genre(
+                        genre_id=genre_id,
+                        page=p
+                    )
+
+                    if not tv_results or "results" not in tv_results:
+                        break
+
+                    for show in tv_results.get("results", []):
+                        show["media_type"] = "tv"
+                        all_media.append(show)
+
+                    # Stop if we got less than 20 results (last page)
+                    if len(tv_results.get("results", [])) < 20:
+                        break
+            except Exception as e:
+                print(f"Error fetching TV shows for genre {genre_id}: {str(e)}")
+
+        # If no results found, return empty
+        if not all_media:
+            return {
+                "results": [],
+                "page": page,
+                "total_pages": 0,
+                "source": "tmdb"
+            }
+
+        # Sort by vote_average if combining both types
+        if not media_type:
+            all_media.sort(key=lambda x: x.get("vote_average", 0), reverse=True)
+
+        # Limit to 200 items
+        all_media = all_media[:200]
+
+        # Cache results
+        try:
+            await redis_service.set_genre_media(genre_id, all_media, cache_type)
+        except Exception as e:
+            print(f"Error caching genre {genre_id}: {str(e)}")
+
+        # Return requested page
+        start_idx = (page - 1) * 20
+        end_idx = start_idx + 20
+
+        return {
+            "results": all_media[start_idx:end_idx],
+            "page": page,
+            "total_pages": min(25, len(all_media) // 20 + 1),
+            "source": "tmdb"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Log the full error for debugging
+        import traceback
+        print(f"Error in get_top_media_by_genre for genre {genre_id}:")
+        print(traceback.format_exc())
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching media by genre {genre_id}: {str(e)}"
+        )
+
+
+@router.delete("/cache/genre/{genre_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_genre_cache(genre_id: int):
+    """Clear cache for a specific genre"""
+    await redis_service.clear_genre_cache(genre_id)
+    return None
+
+
 @router.delete("/cache/clear", status_code=status.HTTP_204_NO_CONTENT)
 async def clear_media_cache():
     """Clear all media caches (admin utility)"""
