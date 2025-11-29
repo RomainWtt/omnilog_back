@@ -33,7 +33,7 @@ class MediaCreate(MediaBase):
 
 
 class MediaRead(MediaBase):
-    id: UUID
+    id: Optional[UUID] = None
     original_title: Optional[str] = None
     overview: Optional[str] = None
     poster_path: Optional[str] = None

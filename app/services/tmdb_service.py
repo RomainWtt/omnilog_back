@@ -136,5 +136,30 @@ class TMDBService:
             return ""
         return f"{settings.TMDB_IMAGE_BASE_URL}/{size}{path}"
 
+    async def get_movie_similar(self, tmdb_id: int, page: int = 1) -> dict[str, Any]:
+        """Get similar movies from TMDB"""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/movie/{tmdb_id}/similar",
+                headers=self.headers,
+                params={"page": page, "language": "en-US"}
+            )
+            if response.status_code != 200:
+                # On ne lève pas d'erreur ici pour ne pas bloquer tout l'algo si un film échoue
+                return {"results": []}
+            return response.json()
+
+    async def get_tv_similar(self, tmdb_id: int, page: int = 1) -> dict[str, Any]:
+        """Get similar TV shows from TMDB"""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/tv/{tmdb_id}/similar",
+                headers=self.headers,
+                params={"page": page, "language": "en-US"}
+            )
+            if response.status_code != 200:
+                return {"results": []}
+            return response.json()
+
 
 tmdb_service = TMDBService()
