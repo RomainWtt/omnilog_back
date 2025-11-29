@@ -22,9 +22,7 @@ async_session_maker = sessionmaker(
 
 async def get_session() -> AsyncSession:
     """Dependency to get database session"""
-    print("Récup de la session")
     async with async_session_maker() as session:
-        print(session)
         yield session
 
 
