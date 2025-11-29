@@ -16,6 +16,8 @@ from app.db.models import MediaType
 from app.db.models import ListStatus, User, NotificationType
 from app.crud import crud_media
 from app.core.deps import get_current_active_user
+from app.schemas.streaming_availability import StreamingAvailabilityRead
+from app.services.streaming_service import streaming_service
 from app.services.tmdb_service import tmdb_service
 from datetime import datetime
 from app.services.notification_service import notification_service
@@ -273,6 +275,40 @@ async def add_to_library(
     )
 
     return entry
+
+
+@router.get("/availability/{tmdb_id}", response_model=StreamingAvailabilityRead)
+async def get_streaming_availability(
+        tmdb_id: int,
+        media_type: MediaType = Query("movie", description="Type de média: 'movie' ou 'tv'"),
+        country_code: str = Query("FR", description="Code ISO 3166-1 alpha-2 du pays (ex: 'FR', 'CA', 'US')"),
+        session: AsyncSession = Depends(get_session)
+        # Gardé pour la cohérence, mais pas nécessaire si seul le service est appelé
+):
+
+    # Valider l'existence du média dans votre DB (optionnel mais recommandé)
+    media_entry = await crud_media.get_media_by_tmdb_id(session, tmdb_id, media_type.lower())
+    if not media_entry:
+        # Optionnel: tenter d'ajouter le média à la DB avant de continuer si non trouvé.
+        pass
+
+    try:
+        # Appel au service de streaming (qui appelle l'API externe)
+        availability_data = await streaming_service.get_availability_by_tmdb_id(
+            tmdb_id=tmdb_id,
+            media_type=media_type.lower(),
+            country=country_code.upper()
+        )
+
+        # Validation et retour du schéma Pydantic
+        return StreamingAvailabilityRead(**availability_data)
+
+    except Exception as e:
+        # Gérer spécifiquement les erreurs de l'API externe (ex: limite de requêtes atteinte)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Erreur lors de la récupération des données de streaming: {str(e)}"
+        )
 
 
 @router.get("/{media_id}", response_model=UserMediaEntryRead)
