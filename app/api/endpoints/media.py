@@ -161,13 +161,13 @@ async def get_media_details(
             actors = []
             if "credits" in tmdb_details and "cast" in tmdb_details["credits"]:
                 actors = [actor["name"] for actor in tmdb_details["credits"]["cast"][:5]]
-            
+
             # Extract directors (for movies) or creators (for TV)
             directors = []
             if media.media_type == MediaType.MOVIE and "credits" in tmdb_details:
                 if "crew" in tmdb_details["credits"]:
                     directors = [
-                        crew["name"] for crew in tmdb_details["credits"]["crew"] 
+                        crew["name"] for crew in tmdb_details["credits"]["crew"]
                         if crew.get("job") == "Director"
                     ]
             elif media.media_type == MediaType.TV:
@@ -234,19 +234,21 @@ async def get_media_by_tmdb_id(
         actors = []
         if "credits" in tmdb_data and "cast" in tmdb_data["credits"]:
             actors = [actor["name"] for actor in tmdb_data["credits"]["cast"][:5]]
-        
+
         # Extract directors (for movies) or creators (for TV)
         directors = []
         if media_type == MediaType.MOVIE and "credits" in tmdb_data:
             if "crew" in tmdb_data["credits"]:
                 directors = [
-                    crew["name"] for crew in tmdb_data["credits"]["crew"] 
+                    crew["name"] for crew in tmdb_data["credits"]["crew"]
                     if crew.get("job") == "Director"
                 ]
         elif media_type == MediaType.TV:
             if "created_by" in tmdb_data:
                 directors = [creator["name"] for creator in tmdb_data["created_by"]]
 
+
+        print(f"Valeur des genre {tmdb_data.get('genres')}")
         media_data = {
             "tmdb_id": tmdb_id,
             "media_type": media_type,
@@ -260,7 +262,7 @@ async def get_media_by_tmdb_id(
             "number_of_seasons": tmdb_data.get("number_of_seasons"),
             "number_of_episodes": tmdb_data.get("number_of_episodes"),
             "episode_run_time": tmdb_data.get("episode_run_time"),
-            "genres": [g["name"] for g in tmdb_data.get("genres", [])],
+            "genre_ids": [g["id"] for g in tmdb_data.get("genres", [])],
             "production_companies": [pc["name"] for pc in tmdb_data.get("production_companies", [])],
             "actors": actors,
             "directors": directors,
