@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     MAIL_SERVER: str = "localhost"
     MAIL_PORT: int = 587
     
+    # Cloudflare R2 Storage
+    R2_ENDPOINT_URL: str = ""  
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET_NAME: str = "omnilog"
+    R2_PUBLIC_URL: str = ""
+    
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173","https://omnilog.inscriptionrlt.be"]
     
