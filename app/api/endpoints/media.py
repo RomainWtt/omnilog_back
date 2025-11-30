@@ -11,7 +11,7 @@ from app.schemas.media import (
     UserMediaEntryUpdate,
     UserMediaEntryRead,
     UserMediaEntryWithMedia,
-    ProgressUpdate
+    ProgressUpdate, MediaSearch
 )
 from app.db.models import MediaType, ListStatus, User, Media
 from app.crud import crud_media, crud_genre
@@ -247,7 +247,6 @@ async def get_media_by_tmdb_id(
             if "created_by" in tmdb_data:
                 directors = [creator["name"] for creator in tmdb_data["created_by"]]
 
-
         print(f"Valeur des genre {tmdb_data.get('genres')}")
         media_data = {
             "tmdb_id": tmdb_id,
@@ -389,14 +388,14 @@ async def get_top_tv(
         )
 
 
-@router.get("/top/all", response_model=dict)
+@router.get("/top/all", response_model=MediaSearch)
 async def get_top_media(
         page: int = Query(1, ge=1, le=25),
         session: AsyncSession = Depends(get_session)
 ):
     """
     Get top rated media (movies + TV combined, sorted by vote_average)
-    Each item includes media_type: "movie" or "tv"
+    Returns properly structured MediaRead objects
     """
     # Check Redis cache
     cached_media = await redis_service.get_top_media()
@@ -404,12 +403,16 @@ async def get_top_media(
     if cached_media:
         start_idx = (page - 1) * 20
         end_idx = start_idx + 20
-        return {
-            "results": cached_media[start_idx:end_idx],
-            "page": page,
-            "total_pages": 25,
-            "source": "cache"
-        }
+
+        # Convert cached dict to MediaRead objects
+        media_objects = [_tmdb_to_media_read(item) for item in cached_media[start_idx:end_idx]]
+
+        return MediaSearch(
+            results=media_objects,
+            page=page,
+            total_pages=25,
+            total_results=len(cached_media)
+        )
 
     # Fetch both movies and TV from cache or TMDB
     try:
@@ -448,18 +451,60 @@ async def get_top_media(
         start_idx = (page - 1) * 20
         end_idx = start_idx + 20
 
-        return {
-            "results": all_media[start_idx:end_idx],
-            "page": page,
-            "total_pages": 25,
-            "source": "tmdb"
-        }
+        # Convert to MediaRead objects
+        media_objects = [_tmdb_to_media_read(item) for item in all_media[start_idx:end_idx]]
+
+        return MediaSearch(
+            results=media_objects,
+            page=page,
+            total_pages=25,
+            total_results=len(all_media)
+        )
 
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching top media: {str(e)}"
         )
+
+
+def _tmdb_to_media_read(tmdb_data: dict) -> MediaRead:
+    """Convert TMDB API response to MediaRead object"""
+    media_type = tmdb_data.get("media_type", "movie")
+
+    # Handle different title fields for movies vs TV
+    title = tmdb_data.get("title") if media_type == "movie" else tmdb_data.get("name")
+    original_title = tmdb_data.get("original_title") if media_type == "movie" else tmdb_data.get("original_name")
+
+    # Handle different date fields
+    release_date = tmdb_data.get("release_date") if media_type == "movie" else tmdb_data.get("first_air_date")
+
+    return MediaRead(
+        id=None,  # Not in DB yet
+        tmdb_id=tmdb_data.get("id"),
+        media_type=MediaType.MOVIE if media_type == "movie" else MediaType.TV,
+        title=title,
+        original_title=original_title,
+        overview=tmdb_data.get("overview"),
+        poster_path=tmdb_data.get("poster_path"),
+        backdrop_path=tmdb_data.get("backdrop_path"),
+        release_date=release_date,
+        runtime=None,  # Not available in list endpoints
+        number_of_seasons=None,
+        number_of_episodes=None,
+        episode_run_time=None,
+        genre_ids=tmdb_data.get("genre_ids", []),
+        genres=None,
+        production_companies=None,
+        actors=None,
+        directors=None,
+        original_language=tmdb_data.get("original_language"),
+        popularity=tmdb_data.get("popularity"),
+        vote_average=tmdb_data.get("vote_average"),
+        vote_count=tmdb_data.get("vote_count"),
+        created_at=datetime.now(),
+        updated_at=datetime.now()
+    )
 
 
 @router.get("/top/genre/{genre_id}", response_model=dict)

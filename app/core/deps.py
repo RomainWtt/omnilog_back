@@ -67,7 +67,6 @@ async def get_current_active_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive"
         )
-    print(current_user)
     return current_user
 
 

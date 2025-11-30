@@ -36,6 +36,7 @@ class ReviewRead(ReviewBase):
     created_at: datetime
     updated_at: datetime
     user: UserPublic
+    is_friend: Optional[bool] = None
 
     class Config:
         from_attributes = True
