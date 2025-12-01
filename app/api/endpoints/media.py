@@ -1,24 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from uuid import UUID
+from datetime import datetime
 from typing import Optional
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.deps import get_optional_current_user
+from app.crud import crud_media, crud_genre
+from app.db.models import MediaType, User
 from app.db.session import get_session
 from app.schemas.genre import GenreRead
 from app.schemas.media import (
     MediaRead,
-    MediaCreate,
-    UserMediaEntryCreate,
-    UserMediaEntryUpdate,
-    UserMediaEntryRead,
-    UserMediaEntryWithMedia,
-    ProgressUpdate, MediaSearch
+    MediaSearch
 )
-from app.db.models import MediaType, ListStatus, User, Media
-from app.crud import crud_media, crud_genre
-from app.core.deps import get_current_active_user, get_optional_current_user
-from app.services.tmdb_service import tmdb_service
 from app.services.redis_service import redis_service
-from datetime import datetime
+from app.services.tmdb_service import tmdb_service
 
 router = APIRouter()
 
