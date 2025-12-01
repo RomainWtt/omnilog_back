@@ -32,19 +32,26 @@ async def get_comments_for_media(
         media_id: UUID,
         page: int = Query(1, ge=1, description="Page number"),
         session: AsyncSession = Depends(get_session),
-        # 💡 CHANGEMENT : L'utilisateur est maintenant OPTIONNEL.
         current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     PAGE_SIZE = 20
     offset = (page - 1) * PAGE_SIZE
 
+    # Passer l'ID de l'utilisateur si connecté
     comments = await crud_review.get_media_comments(
         session=session,
         media_id=media_id,
         limit=PAGE_SIZE,
         offset=offset,
+        exclude_reported_by=current_user.id if current_user else None
     )
-    total = await crud_review.get_media_comments_count(session, media_id)
+
+    total = await crud_review.get_media_comments_count(
+        session,
+        media_id,
+        exclude_reported_by=current_user.id if current_user else None
+    )
+
     total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
 
     results_with_status = []
@@ -52,26 +59,22 @@ async def get_comments_for_media(
 
     if current_user:
         commenter_ids = [comment.user_id for comment in comments if comment.user_id != current_user.id]
-
         friendship_map = await check_friendship_status(
             session, current_user.id, commenter_ids
         )
 
     for comment in comments:
         comment_data: Dict[str, Any] = comment.__dict__.copy()
-
         is_friend_status: Optional[bool] = None
 
         if current_user:
             is_self = comment.user_id == current_user.id
-
             if is_self:
                 is_friend_status = True
             else:
                 is_friend_status = friendship_map.get(comment.user_id, False)
 
         comment_data["is_friend"] = is_friend_status
-
         results_with_status.append(ReviewRead.model_validate(comment_data))
 
     return {

@@ -1,16 +1,16 @@
 """
 CRUD operations for reviews/comments
 """
+from datetime import datetime
 from typing import Optional, List
+from uuid import UUID
+
+from sqlalchemy import func, or_, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from sqlalchemy import func, delete, and_, or_, exists
-from uuid import UUID
-from datetime import datetime
-
-from app.db.models import Review, User, Media, ReviewReport
 from sqlmodel import select
 
+from app.db.models import Review, User, Media, ReviewReport
 
 
 async def create_review(
@@ -74,7 +74,8 @@ async def get_media_comments(
         session: AsyncSession,
         media_id: UUID,
         limit: int = 20,
-        offset: int = 0
+        offset: int = 0,
+        exclude_reported_by: Optional[UUID] = None  # Nouvel argument
 ) -> List[Review]:
     """
     Get all visible comments for a specific media with pagination
@@ -84,42 +85,68 @@ async def get_media_comments(
         media_id: Media ID
         limit: Maximum number of results
         offset: Number of results to skip
+        exclude_reported_by: User ID to exclude their reported reviews
 
     Returns:
         List of Review objects ordered by created_at desc
     """
-    result = await session.execute(
+    query = (
         select(Review)
         .options(selectinload(Review.user))
         .where(Review.media_id == media_id)
         .where(Review.is_visible == True)
-        .order_by(Review.created_at.desc())
-        .limit(limit)
-        .offset(offset)
     )
+
+    # Exclure les commentaires signalés par cet utilisateur
+    if exclude_reported_by is not None:
+        query = query.where(
+            ~exists(
+                select(1)
+                .select_from(ReviewReport)
+                .where(ReviewReport.review_id == Review.id)
+                .where(ReviewReport.reporter_id == exclude_reported_by)
+            )
+        )
+
+    query = query.order_by(Review.created_at.desc()).limit(limit).offset(offset)
+
+    result = await session.execute(query)
     return list(result.scalars().all())
 
 
 async def get_media_comments_count(
         session: AsyncSession,
-        media_id: UUID
+        media_id: UUID,
+        exclude_reported_by: Optional[UUID] = None
 ) -> int:
     """
-    Get total count of visible comments for a media
+    Get count of visible comments for a specific media
 
     Args:
         session: Database session
         media_id: Media ID
+        exclude_reported_by: User ID to exclude their reported reviews
 
     Returns:
-        Total count of visible comments
+        Count of comments
     """
-    result = await session.execute(
-        select(func.count())
-        .select_from(Review)
+    query = (
+        select(func.count(Review.id))
         .where(Review.media_id == media_id)
         .where(Review.is_visible == True)
     )
+
+    if exclude_reported_by is not None:
+        query = query.where(
+            ~exists(
+                select(1)
+                .select_from(ReviewReport)
+                .where(ReviewReport.review_id == Review.id)
+                .where(ReviewReport.reporter_id == exclude_reported_by)
+            )
+        )
+
+    result = await session.execute(query)
     return result.scalar_one()
 
 
