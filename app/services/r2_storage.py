@@ -1,5 +1,5 @@
 """
-Cloudflare R2 Storage Service for profile pictures
+Cloudflare R2 Storage Service for profile pictures and challenge avatars
 Uses S3-compatible API
 """
 import boto3
@@ -39,13 +39,13 @@ class R2StorageService:
             )
         return self._client
     
-    def _generate_filename(self, user_id: UUID, original_filename: str) -> str:
+    def _generate_filename(self, folder: str, entity_id: UUID, original_filename: str) -> str:
         """Generate unique filename for avatar"""
         ext = original_filename.rsplit('.', 1)[-1].lower()
         timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-        hash_input = f"{user_id}{timestamp}".encode()
+        hash_input = f"{entity_id}{timestamp}".encode()
         file_hash = hashlib.md5(hash_input).hexdigest()[:8]
-        return f"avatars/{user_id}/{file_hash}.{ext}"
+        return f"{folder}/{entity_id}/{file_hash}.{ext}"
     
     def validate_file(self, filename: str, file_size: int) -> tuple[bool, str]:
         """Validate file extension and size"""
@@ -61,15 +61,16 @@ class R2StorageService:
         
         return True, "OK"
     
-    async def upload_avatar(
+    async def _upload_file(
         self,
-        user_id: UUID,
+        folder: str,
+        entity_id: UUID,
         file_content: bytes,
         original_filename: str,
         content_type: str
     ) -> tuple[bool, str]:
         """
-        Upload avatar to R2
+        Generic upload method
         
         Returns:
             tuple: (success, url_or_error_message)
@@ -81,7 +82,7 @@ class R2StorageService:
                 return False, message
             
             # Generate filename
-            key = self._generate_filename(user_id, original_filename)
+            key = self._generate_filename(folder, entity_id, original_filename)
             
             # Upload to R2
             self.client.put_object(
@@ -101,11 +102,43 @@ class R2StorageService:
         except Exception as e:
             return False, f"Unexpected error: {str(e)}"
     
+    async def upload_avatar(
+        self,
+        user_id: UUID,
+        file_content: bytes,
+        original_filename: str,
+        content_type: str
+    ) -> tuple[bool, str]:
+        """Upload user avatar to R2"""
+        return await self._upload_file(
+            folder="avatars",
+            entity_id=user_id,
+            file_content=file_content,
+            original_filename=original_filename,
+            content_type=content_type
+        )
+    
+    async def upload_challenge_avatar(
+        self,
+        challenge_id: UUID,
+        file_content: bytes,
+        original_filename: str,
+        content_type: str
+    ) -> tuple[bool, str]:
+        """Upload challenge avatar to R2"""
+        return await self._upload_file(
+            folder="challenges",
+            entity_id=challenge_id,
+            file_content=file_content,
+            original_filename=original_filename,
+            content_type=content_type
+        )
+    
     async def delete_avatar(self, avatar_url: str) -> bool:
-        """Delete avatar from R2"""
+        """Delete avatar from R2 (works for both user and challenge avatars)"""
         try:
             if not avatar_url or settings.R2_PUBLIC_URL not in avatar_url:
-                return True
+                return True  # Not an R2 URL, nothing to delete
             
             # Extract key from URL
             key = avatar_url.replace(f"{settings.R2_PUBLIC_URL}/", "")

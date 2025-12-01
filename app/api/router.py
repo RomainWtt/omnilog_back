@@ -4,6 +4,7 @@ from app.api.endpoints import auth, users, media, library, review, oauth, email_
 from app.api.endpoints import friendship
 from app.api.endpoints import report
 from app.api.endpoints import avatar
+from app.api.endpoints import challenge_avatar
 
 api_router = APIRouter()
 
@@ -15,6 +16,7 @@ api_router.include_router(library.router, prefix="/library", tags=["library"])
 api_router.include_router(review.router, prefix="/review", tags=["review"])
 api_router.include_router(report.router, prefix="/review_reports", tags=["report"])
 api_router.include_router(challenge.router, prefix="/challenges", tags=["challenge"])
+api_router.include_router(challenge_avatar.router, prefix="/challenges", tags=["challenge"])
 api_router.include_router(memberships.router, prefix="/challenge_memberships", tags=["memberships"])
 api_router.include_router(oauth.router, prefix="/oauth")
 api_router.include_router(email_verification.router, prefix="/email", tags=["Email Verification"])
