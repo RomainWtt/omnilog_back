@@ -80,3 +80,20 @@ async def search_challenges_details(
     result = await session.execute(stmt)
     return result.scalars().all()
 
+
+async def update_challenge_avatar(
+    session: AsyncSession,
+    challenge_id: UUID,
+    avatar_url: Optional[str]
+) -> Challenge | None:
+    """Update challenge avatar URL"""
+    challenge = await get_challenge_by_id(session, challenge_id)
+    if not challenge:
+        return None
+    
+    challenge.avatar_url = avatar_url
+    challenge.updated_at = datetime.utcnow()
+    
+    await session.commit()
+    await session.refresh(challenge)
+    return challenge
