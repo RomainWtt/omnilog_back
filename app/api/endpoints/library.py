@@ -1,10 +1,20 @@
 import asyncio
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from uuid import UUID
+from datetime import datetime
 from typing import Optional, List, Dict, Any
+from uuid import UUID
 
-from sqlmodel import select
+from fastapi import APIRouter, Depends
+from fastapi import HTTPException, status, Query
+from sqlalchemy import select, func, cast
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
+
+from app.core.deps import get_current_active_user
+from app.crud import crud_media
+from app.db.models import Genre
+from app.db.models import ListStatus, NotificationType
+from app.db.models import User, UserMediaEntry, Media, MediaType
 from app.db.session import get_session
 from app.schemas.media import (
     UserMediaEntryCreate,
@@ -14,15 +24,11 @@ from app.schemas.media import (
     ProgressUpdate,
     MediaRead
 )
-from app.db.models import MediaType, Genre
-from app.db.models import ListStatus, User, NotificationType
-from app.crud import crud_media
-from app.core.deps import get_current_active_user
 from app.schemas.streaming_availability import StreamingAvailabilityRead
+from app.schemas.watch_list_stats import WatchlistStats
+from app.services.notification_service import notification_service
 from app.services.streaming_service import streaming_service
 from app.services.tmdb_service import tmdb_service
-from datetime import datetime
-from app.services.notification_service import notification_service
 
 router = APIRouter()
 
@@ -40,6 +46,7 @@ async def get_my_library(
     
     Can filter by status: watching, completed, plan_to_watch, dropped, on_hold, favorite
     """
+
     entries = await crud_media.get_user_library(
         session=session,
         user_id=current_user.id,
@@ -226,6 +233,72 @@ def _map_tmdb_to_schema(item: dict, media_type: MediaType, genre_objects: List[G
         updated_at=datetime.now(),
     )
 
+@router.get("/stats", response_model=WatchlistStats)
+async def get_watchlist_stats(
+        current_user: User = Depends(get_current_active_user),
+        session: AsyncSession = Depends(get_session)
+):
+    """
+    Récupère les statistiques de la watchlist de l'utilisateur
+
+    Retourne le nombre total de médias ainsi que le détail par type:
+    - Films (movies)
+    - Séries (series)
+    - Animés (anime)
+    """
+
+    # Requête pour compter les films (SANS les animés)
+    movies_stmt = (
+        select(func.count(UserMediaEntry.media_id))
+        .join(Media, UserMediaEntry.media_id == Media.id)
+        .where(
+            UserMediaEntry.user_id == current_user.id,
+            UserMediaEntry.list_status == ListStatus.PLAN_TO_WATCH,
+            Media.media_type == MediaType.MOVIE,
+        )
+    )
+    movies_result = await session.execute(movies_stmt)
+    movies_count = movies_result.scalar() or 0
+
+    # Requête pour compter les séries (SANS les animés)
+    series_stmt = (
+        select(func.count(UserMediaEntry.media_id))
+        .join(Media, UserMediaEntry.media_id == Media.id)
+        .where(
+            UserMediaEntry.user_id == current_user.id,
+            Media.media_type == MediaType.TV,
+            UserMediaEntry.list_status == ListStatus.PLAN_TO_WATCH,
+            ~cast(Media.genre_ids, JSONB).contains([16])
+        )
+    )
+    series_result = await session.execute(series_stmt)
+    series_count = series_result.scalar() or 0
+
+    # Requête pour compter les animés
+    # Les animés sont identifiés par le genre_ids contenant l'ID 16 (Animation de TMDB)
+    # On cast genre_ids de json vers jsonb pour utiliser l'opérateur @>
+    anime_stmt = (
+        select(func.count(UserMediaEntry.media_id))
+        .join(Media, UserMediaEntry.media_id == Media.id)
+        .where(
+            UserMediaEntry.user_id == current_user.id,
+            UserMediaEntry.list_status == ListStatus.PLAN_TO_WATCH,
+            cast(Media.genre_ids, JSONB).contains([16])
+        )
+    )
+    anime_result = await session.execute(anime_stmt)
+    anime_count = anime_result.scalar() or 0
+
+    # Total = Films (non animés) + Séries (non animées) + Animés
+    total_count = movies_count + series_count + anime_count
+
+    return WatchlistStats(
+        total=total_count,
+        movies=movies_count,
+        series=series_count,
+        anime=anime_count
+    )
+
 
 @router.get("/completed/top-rated", response_model=list[UserMediaEntryWithMedia])
 async def get_top_rated_completed(
@@ -300,7 +373,6 @@ async def get_streaming_availability(
         session: AsyncSession = Depends(get_session)
         # Gardé pour la cohérence, mais pas nécessaire si seul le service est appelé
 ):
-
     # Valider l'existence du média dans votre DB (optionnel mais recommandé)
     media_entry = await crud_media.get_media_by_tmdb_id(session, tmdb_id, media_type.lower())
     if not media_entry:
