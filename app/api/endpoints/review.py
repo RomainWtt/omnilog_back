@@ -90,6 +90,7 @@ async def get_comments_for_media(
 async def get_media_average_rating(
         media_id: UUID,
         session: AsyncSession = Depends(get_session),
+        current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
     Get the average rating for a specific media.
@@ -97,7 +98,13 @@ async def get_media_average_rating(
     Returns the average rating and total number of ratings.
     """
     average = await crud_review.get_media_average_rating(session, media_id)
+    average_friend = 0
+    print(f"Current User: {current_user}")
+    if current_user is not None:
+        print(f"Id user {current_user.id}")
+        average_friend = await crud_review.get_media_average_rating_friend(session, media_id, current_user.id)
 
+    print(f"Average friends rating = {average_friend}")
     # Get count of ratings
     from sqlalchemy import func, select
     from app.db.models import Review
@@ -114,6 +121,7 @@ async def get_media_average_rating(
     return {
         "media_id": media_id,
         "average_rating": average,
+        "average_rating_friend": average_friend,
         "total_ratings": count
     }
 
@@ -155,43 +163,41 @@ async def get_user_reviews(
         session: AsyncSession = Depends(get_session),
         current_user: User = Depends(get_current_user)
 ):
-    """
-    Get all reviews created by a specific user.
-
-    Returns paginated results ordered by most recent first.
-    """
     offset = (page - 1) * 20
 
     reviews = await crud_review.get_user_reviews(
         session=session,
-        user_id=user_id,
+        user_id=current_user.id,
         limit=20,
         offset=offset
     )
 
-    # Count total reviews
     from sqlalchemy import func, select
     from app.db.models import Review
 
     result = await session.execute(
         select(func.count())
         .select_from(Review)
-        .where(Review.user_id == user_id)
+        .where(Review.user_id == current_user.id)
     )
     total = result.scalar_one()
 
+    # Enrichir avec is_report et valider
+    results = []
+    for review in reviews:
+        review_dict = review.model_dump()
+        review_dict["user"] = review.user
+        review_dict["media"] = review.media
+        review_dict["is_reported"] = len(review.reports) > 0
+        results.append(ReviewRead.model_validate(review_dict))
+
     return {
-        "results": [ReviewRead.model_validate(review) for review in reviews],
+        "results": results,
         "page": page,
         "total": total,
         "pages": (total + 19) // 20,
         "source": "local"
     }
-
-
-# ============================================
-# GENERAL ROUTES (static paths)
-# ============================================
 
 
 @router.get("/recent", response_model=list[ReviewRead])

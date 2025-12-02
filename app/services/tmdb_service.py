@@ -246,4 +246,24 @@ class TMDBService:
                 )
             return response.json()
 
+    async def get_tv_season(self, tmdb_id: int, season_number: int) -> dict[str, Any]:
+        """Get detailed information about a specific TV season"""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/tv/{tmdb_id}/season/{season_number}",
+                headers=self.headers,
+                params={"language": "en-US"}
+            )
+            if response.status_code == 404:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Season not found"
+                )
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="TMDB API is unavailable"
+                )
+            return response.json()
+
 tmdb_service = TMDBService()
