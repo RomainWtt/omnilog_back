@@ -43,12 +43,14 @@ async def get_comments_for_media(
         media_id=media_id,
         limit=PAGE_SIZE,
         offset=offset,
+        requesting_user_id=current_user.id,
         exclude_reported_by=current_user.id if current_user else None
     )
 
     total = await crud_review.get_media_comments_count(
         session,
         media_id,
+        requesting_user_id=current_user.id,
         exclude_reported_by=current_user.id if current_user else None
     )
 

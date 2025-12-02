@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
+from app.crud.crud_review_utils import exclude_review_private, exclude_report_review
 from app.db.models import Review, User, Media, ReviewReport, FriendshipStatus
 
 
@@ -81,7 +82,8 @@ async def get_media_comments(
         media_id: UUID,
         limit: int = 20,
         offset: int = 0,
-        exclude_reported_by: Optional[UUID] = None  # Nouvel argument
+        exclude_reported_by: Optional[UUID] = None,
+        requesting_user_id: Optional[UUID] = None
 ) -> List[Review]:
     """
     Get all visible comments for a specific media with pagination
@@ -92,6 +94,7 @@ async def get_media_comments(
         limit: Maximum number of results
         offset: Number of results to skip
         exclude_reported_by: User ID to exclude their reported reviews
+        requesting_user_id: ID of the requesting user (to filter private accounts)
 
     Returns:
         List of Review objects ordered by created_at desc
@@ -107,15 +110,10 @@ async def get_media_comments(
     )
 
     # Exclure les commentaires signalés par cet utilisateur
-    if exclude_reported_by is not None:
-        query = query.where(
-            ~exists(
-                select(1)
-                .select_from(ReviewReport)
-                .where(ReviewReport.review_id == Review.id)
-                .where(ReviewReport.reporter_id == exclude_reported_by)
-            )
-        )
+    query = await exclude_report_review(exclude_reported_by, query)
+
+    # Exclure les commentaires qui ont été écrit par des utilisateur privé et donc les 2 utilisateur ne sont pas amis
+    query = await exclude_review_private(query, requesting_user_id)
 
     query = query.order_by(Review.created_at.desc()).limit(limit).offset(offset)
 
@@ -126,7 +124,8 @@ async def get_media_comments(
 async def get_media_comments_count(
         session: AsyncSession,
         media_id: UUID,
-        exclude_reported_by: Optional[UUID] = None
+        exclude_reported_by: Optional[UUID] = None,
+        requesting_user_id: Optional[UUID] = None
 ) -> int:
     """
     Get count of visible comments for a specific media
@@ -135,6 +134,7 @@ async def get_media_comments_count(
         session: Database session
         media_id: Media ID
         exclude_reported_by: User ID to exclude their reported reviews
+        requesting_user_id: ID of the requesting user (to filter private accounts)
 
     Returns:
         Count of comments
@@ -145,19 +145,12 @@ async def get_media_comments_count(
         .where(Review.is_visible == True)
     )
 
-    if exclude_reported_by is not None:
-        query = query.where(
-            ~exists(
-                select(1)
-                .select_from(ReviewReport)
-                .where(ReviewReport.review_id == Review.id)
-                .where(ReviewReport.reporter_id == exclude_reported_by)
-            )
-        )
+    query = await exclude_report_review(exclude_reported_by, query)
+
+    query = await exclude_review_private(query, requesting_user_id)
 
     result = await session.execute(query)
     return result.scalar_one()
-
 
 async def get_user_reviews(
         session: AsyncSession,
