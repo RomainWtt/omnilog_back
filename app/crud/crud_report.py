@@ -49,6 +49,7 @@ async def get_all_reports(session: AsyncSession) -> list[ReviewReportRead]:
         )
         review = result.scalar_one_or_none()
         media_name = review.media.title
+        content = review.content
 
         detailed_reports.append(
             ReviewReportRead(
@@ -60,11 +61,11 @@ async def get_all_reports(session: AsyncSession) -> list[ReviewReportRead]:
                 review_id=report.review_id,
                 reason=report.reason,
                 created_at=report.created_at,
-                media=media_name
+                media=media_name,
+                content=review.content
             )
         )
     return detailed_reports
-
 
 
 async def approve_report_by_id(session: AsyncSession, report_id: UUID) -> bool:
@@ -72,19 +73,19 @@ async def approve_report_by_id(session: AsyncSession, report_id: UUID) -> bool:
     if not report:
         return False
 
-    await hide_review(session, report.review_id)
     await delete_report(session, report_id)
     return True
+
 
 async def reject_report_by_id(session: AsyncSession, report_id: UUID) -> bool:
     return await delete_report(session, report_id)
 
 
 async def create_report(
-    session: AsyncSession,
-    reporter_id: UUID,
-    review_id: UUID,
-    reason: str
+        session: AsyncSession,
+        reporter_id: UUID,
+        review_id: UUID,
+        reason: str
 ) -> ReviewReport:
     """Create a new report"""
 
@@ -124,9 +125,9 @@ async def create_report(
 
 
 async def update_report(
-    session: AsyncSession,
-    report_id: UUID,
-    **update_data
+        session: AsyncSession,
+        report_id: UUID,
+        **update_data
 ) -> Optional[ReviewReport]:
     report = await get_report_by_id(session, report_id)
     if not report:
@@ -142,7 +143,7 @@ async def update_report(
     return report
 
 
-async def delete_report(session: AsyncSession, report_id: UUID) -> bool: # TODO a garer ?
+async def delete_report(session: AsyncSession, report_id: UUID) -> bool:  # TODO a garer ?
     report = await get_report_by_id(session, report_id)
     if not report:
         return False

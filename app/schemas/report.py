@@ -27,6 +27,7 @@ class ReviewReportRead(BaseModel):
     reason: str
     created_at: datetime
     media : Optional[str] = None
+    content : Optional[str] = None
 
     class Config:
         from_attributes = True
