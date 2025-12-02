@@ -10,7 +10,14 @@ class MediaBase(BaseModel):
     tmdb_id: int
     media_type: MediaType
     title: str
-    
+
+
+class MediaBasic(MediaBase):
+    id: UUID
+    poster_path: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 class MediaCreate(MediaBase):
     original_title: Optional[str] = None
@@ -57,7 +64,6 @@ class MediaRead(MediaBase):
     
     class Config:
         from_attributes = True
-
 
 class MediaSearch(BaseModel):
     """Media search result"""

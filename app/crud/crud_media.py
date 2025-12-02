@@ -190,7 +190,7 @@ async def get_top_rated_completed(
     query = select(UserMediaEntry).where(
         UserMediaEntry.user_id == user_id,
         UserMediaEntry.list_status == ListStatus.COMPLETED,
-        UserMediaEntry.score >= min_score
+        UserMediaEntry.score >= min_score,
     ).order_by(UserMediaEntry.score.desc(), UserMediaEntry.completed_at.desc())
 
     query = query.limit(limit).offset(offset)

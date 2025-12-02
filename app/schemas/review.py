@@ -2,6 +2,7 @@
 Pydantic schemas for reviews/comments
 """
 from pydantic import BaseModel, Field
+from app.schemas.media import MediaBasic
 from uuid import UUID
 from typing import Optional, List
 from datetime import datetime
@@ -37,6 +38,8 @@ class ReviewRead(ReviewBase):
     updated_at: datetime
     user: UserPublic
     is_friend: Optional[bool] = None
+    is_reported: Optional[bool] = None
+    media: Optional[MediaBasic]
 
     class Config:
         from_attributes = True
@@ -55,4 +58,5 @@ class MediaAverageRating(BaseModel):
     """Average rating for a media"""
     media_id: UUID
     average_rating: Optional[float] = None
+    average_rating_friend: Optional[float] = None
     total_ratings: int

@@ -2,6 +2,8 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from uuid import UUID
 from typing import Optional, List, Dict, Any
+
+from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_session
 from app.schemas.media import (
@@ -12,7 +14,7 @@ from app.schemas.media import (
     ProgressUpdate,
     MediaRead
 )
-from app.db.models import MediaType
+from app.db.models import MediaType, Genre
 from app.db.models import ListStatus, User, NotificationType
 from app.crud import crud_media
 from app.core.deps import get_current_active_user
@@ -166,13 +168,24 @@ async def get_recommendations(
         else:
             continue  # Skip if unknown
 
-        mapped_media = _map_tmdb_to_schema(item_data, m_type)
+        genre_objects = []
+        if "genre_ids" in item_data:
+            genre_ids = item_data["genre_ids"]
+            # Query genres from your database
+            stmt = select(Genre).where(
+                Genre.id.in_(genre_ids),
+                Genre.media_type == m_type
+            )
+            result = await session.execute(stmt)
+            genre_objects = result.scalars().all()
+
+        mapped_media = _map_tmdb_to_schema(item_data, m_type, genre_objects)
         final_results.append(mapped_media)
 
     return final_results
 
 
-def _map_tmdb_to_schema(item: dict, media_type: MediaType) -> MediaRead:
+def _map_tmdb_to_schema(item: dict, media_type: MediaType, genre_objects: List[Genre] = None) -> MediaRead:
     """Helper to map TMDB raw response to MediaRead schema"""
 
     # Handle dates safely
@@ -183,6 +196,8 @@ def _map_tmdb_to_schema(item: dict, media_type: MediaType) -> MediaRead:
             release_date = datetime.strptime(date_str, "%Y-%m-%d").date()
         except (ValueError, TypeError):
             pass
+
+    genres = genre_objects if genre_objects else []
 
     return MediaRead(
         id=None,  # Not in DB yet
@@ -197,7 +212,7 @@ def _map_tmdb_to_schema(item: dict, media_type: MediaType) -> MediaRead:
         vote_count=item.get("vote_count"),
         popularity=item.get("popularity"),
         original_language=item.get("original_language"),
-        genres=[],  # Genre IDs are returned, but mapping them requires an extra call or cache
+        genres=genres,
         release_date=release_date,
         # Default optional fields to None
         runtime=None,
@@ -396,7 +411,7 @@ async def update_progress(
         media_id=media_id
     )
 
-    if existing_entry and progress.timecode <= 0:
+    if existing_entry and progress.timecode <= 0 and progress.current_episode <= 1 and progress.current_season <= 1:
         # Supprimer l'entrée directement
         deleted = await crud_media.delete_user_media_entry(
             session=session,

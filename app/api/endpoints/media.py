@@ -1,5 +1,6 @@
+import asyncio
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -14,6 +15,7 @@ from app.schemas.media import (
     MediaRead,
     MediaSearch
 )
+from app.schemas.tv import TVSeasonsSchema, SeasonSchema, EpisodeSchema
 from app.services.redis_service import redis_service
 from app.services.tmdb_service import tmdb_service
 
@@ -628,6 +630,79 @@ async def get_top_media_by_genre(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching media by genre {genre_id}: {str(e)}"
+        )
+
+
+@router.get("/tv/{tmdb_id}/seasons", response_model=TVSeasonsSchema)
+async def get_tv_seasons_episodes(
+        tmdb_id: int,
+        session: AsyncSession = Depends(get_session)
+):
+    """
+    Get all seasons and episodes for a TV show
+    """
+    try:
+        # Get TV show details to know how many seasons exist
+        tv_details = await tmdb_service.get_tv_details(tmdb_id)
+
+        seasons = tv_details.get("seasons", [])
+
+        if not seasons:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No seasons found for this TV show"
+            )
+
+        # Create tasks to fetch all seasons in parallel
+        tasks = []
+        season_numbers = []
+
+        for season in seasons:
+            season_number = season.get("season_number")
+            # Include all seasons (even Season 0 for specials)
+            season_numbers.append(season_number)
+            tasks.append(tmdb_service.get_tv_season(tmdb_id, season_number))
+
+        # Execute all requests in parallel
+        season_responses = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Build result dictionary
+        result = {"seasons": {}}
+
+        for season_number, response in zip(season_numbers, season_responses):
+            if isinstance(response, Exception):
+                continue
+
+            episodes = response.get("episodes", [])
+
+            formatted_episodes = [
+                EpisodeSchema(
+                    episode_number=e.get("episode_number"),
+                    name=e.get("name"),
+                    air_date=e.get("air_date"),
+                    runtime=e.get("runtime"),
+                    overview=e.get("overview"),
+                    still_path=e.get("still_path"),
+                    vote_average=e.get("vote_average"),
+                    vote_count=e.get("vote_count"),
+                    season_number=season_number
+                )
+                for e in episodes
+            ]
+
+            result["seasons"][season_number] = SeasonSchema(
+                season_number=season_number,
+                episodes=formatted_episodes
+            )
+
+        return TVSeasonsSchema(**result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching TV seasons: {str(e)}"
         )
 
 

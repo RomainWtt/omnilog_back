@@ -5,12 +5,12 @@ from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
 
-from sqlalchemy import func, or_, exists
+from sqlalchemy import func, or_, exists, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
-from app.db.models import Review, User, Media, ReviewReport
+from app.db.models import Review, User, Media, ReviewReport, FriendshipStatus
 
 
 async def create_review(
@@ -38,7 +38,7 @@ async def create_review(
         media_id=media_id,
         content=content,
         rating=rating,
-        is_visible=True
+        is_visible=True,
     )
 
     session.add(review)
@@ -64,10 +64,16 @@ async def get_review_by_id(
     """
     result = await session.execute(
         select(Review)
-        .options(selectinload(Review.user))
+        .options(
+            selectinload(Review.user),
+            selectinload(Review.media),
+            selectinload(Review.reports))
         .where(Review.id == review_id)
     )
-    return result.scalar_one_or_none()
+    review = result.scalar_one_or_none()
+    if review:
+        review.is_reported = len(review.reports) > 0
+    return review
 
 
 async def get_media_comments(
@@ -92,7 +98,10 @@ async def get_media_comments(
     """
     query = (
         select(Review)
-        .options(selectinload(Review.user))
+        .options(
+            selectinload(Review.user),
+            selectinload(Review.media)
+        )
         .where(Review.media_id == media_id)
         .where(Review.is_visible == True)
     )
@@ -155,30 +164,24 @@ async def get_user_reviews(
         user_id: UUID,
         limit: int = 20,
         offset: int = 0
-) -> List[Review]:
+) -> List[Review]:  # Retour à List[Review]
     """
-    Get all reviews created by a specific user
-
-    Args:
-        session: Database session
-        user_id: User ID
-        limit: Maximum number of results
-        offset: Number of results to skip
-
-    Returns:
-        List of Review objects
+    Get all reviews created by a specific user.
     """
-    result = await session.execute(
+    stmt = (
         select(Review)
-        .options(selectinload(Review.media))
+        .options(
+            selectinload(Review.media),
+            selectinload(Review.user),
+            selectinload(Review.reports)
+        )
         .where(Review.user_id == user_id)
-        .order_by(Review.created_at.desc())
-        .limit(limit)
-        .offset(offset)
     )
+
+    stmt = stmt.order_by(Review.created_at.desc()).limit(limit).offset(offset)
+
+    result = await session.execute(stmt)
     return list(result.scalars().all())
-
-
 
 
 async def update_review(
@@ -308,11 +311,11 @@ async def unhide_review(
 
 
 async def search_reviews_by_query(
-    session: AsyncSession,
-    query: str,
-    limit: int = 20,
-    offset: int = 0,
-    is_reported: Optional[bool] = None
+        session: AsyncSession,
+        query: str,
+        limit: int = 20,
+        offset: int = 0,
+        is_reported: Optional[bool] = None
 ) -> list[Review]:
     stmt = (
         select(Review)
@@ -366,6 +369,10 @@ async def get_user_review_for_media(
     """
     result = await session.execute(
         select(Review)
+        .options(
+            selectinload(Review.user),
+            selectinload(Review.media)
+        )
         .where(Review.user_id == user_id)
         .where(Review.media_id == media_id)
         .where(Review.is_visible == True)
@@ -384,7 +391,7 @@ async def get_user_visible_review_for_media(
     """
     result = await session.execute(
         select(Review)
-        .options(selectinload(Review.user))
+        .options(selectinload(Review.user), selectinload(Review.media))
         .where(Review.user_id == user_id)
         .where(Review.media_id == media_id)
         .where(Review.is_visible == True)
@@ -439,3 +446,51 @@ async def get_recent_reviews(
         .limit(limit)
     )
     return list(result.scalars().all())
+
+
+async def get_media_average_rating_friend(
+        session: AsyncSession,
+        media_id: UUID,
+        user_id: UUID
+) -> Optional[float]:
+    """
+    Calculate the average rating for a media based on friends' reviews only.
+
+    Args:
+        session: Database session
+        media_id: Media ID
+        user_id: Current user ID to find their friends
+
+    Returns:
+        Average rating from friends as float or None if no ratings from friends
+    """
+    from app.db.models import Friendship
+
+    friend_ids_subquery = (
+        select(
+            case(
+                (Friendship.user_one_id == user_id, Friendship.user_two_id),
+                (Friendship.user_two_id == user_id, Friendship.user_one_id),
+            )
+        )
+        .where(
+            Friendship.status == FriendshipStatus.ACCEPTED
+        )
+        .where(
+            (Friendship.user_one_id == user_id) | (Friendship.user_two_id == user_id)
+        )
+        .distinct()
+        .alias("friend_ids")
+    )
+
+    # Requête principale pour la moyenne des notes des amis
+    result = await session.execute(
+        select(func.avg(Review.rating))
+        .where(Review.media_id == media_id)
+        .where(Review.is_visible == True)
+        .where(Review.rating.isnot(None))
+        .where(Review.user_id.in_(select(friend_ids_subquery)))
+    )
+    avg = result.scalar_one()
+
+    return float(avg) if avg is not None else None
