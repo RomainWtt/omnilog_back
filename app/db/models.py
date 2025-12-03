@@ -190,6 +190,7 @@ class Review(SQLModel, table=True):
     reports: list["ReviewReport"] = Relationship(back_populates="review")
 
 
+
 class ReviewReport(SQLModel, table=True):
     __tablename__ = "review_reports"
     

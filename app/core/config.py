@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     # Redis size (a voir)
     TOP_MOVIES_CACHE_SIZE: int = 500
 
+    GOOGLE_API_KEY: str = "dummy"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

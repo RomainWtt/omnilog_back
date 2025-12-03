@@ -5,6 +5,7 @@ from app.api.endpoints import friendship
 from app.api.endpoints import report
 from app.api.endpoints import avatar
 from app.api.endpoints import challenge_avatar
+from app.api.endpoints import google_ia
 
 api_router = APIRouter()
 
@@ -22,3 +23,5 @@ api_router.include_router(oauth.router, prefix="/oauth")
 api_router.include_router(email_verification.router, prefix="/email", tags=["Email Verification"])
 api_router.include_router(friendship.router, prefix="/friendships", tags=["friendship"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
+
+api_router.include_router(google_ia.router, prefix="/google_ia", tags=["google_ia"])
