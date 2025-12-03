@@ -72,8 +72,6 @@ async def get_review_by_id(
         .where(Review.id == review_id)
     )
     review = result.scalar_one_or_none()
-    if review:
-        review.is_reported = len(review.reports) > 0
     return review
 
 

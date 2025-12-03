@@ -24,6 +24,7 @@ from app.core.deps import get_current_user, get_optional_current_user
 from app.db.models import User, NotificationType
 from app.services.notification_service import notification_service
 
+
 router = APIRouter()
 
 
@@ -274,12 +275,12 @@ async def create_review(
         content=review_data.content
     )
 
-    # 2. 🆕 Récupérer le titre du média
+    # 2. Récupérer le titre du média
     from app.crud import crud_media
     media = await crud_media.get_media_by_id(session, review_data.media_id)
     media_title = media.title if media else "un média"
 
-    # 3. 🆕 Notifier tous les amis via le service
+    # 3. Notifier tous les amis via le service
     await notification_service.notify_all_friends(
         session=session,
         user_id=current_user.id,

@@ -35,7 +35,8 @@ dependencies = [
     "greenlet>=3.2.4",
     "itsdangerous>=2.2.0",
     "fastapi-mail>=1.5.8",
-    "boto3>=1.41.5"
+    "boto3>=1.41.5",
+
 ]
 
 [project.optional-dependencies]
