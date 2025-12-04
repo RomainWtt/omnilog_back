@@ -246,6 +246,26 @@ def _map_tmdb_to_schema(item: dict, media_type: MediaType, genre_objects: List[G
     )
 
 
+@router.get("/favorites/count", response_model=int)
+async def get_favorites_count(
+        current_user: User = Depends(get_current_active_user),
+        session: AsyncSession = Depends(get_session)
+):
+    """
+    Get count of media marked as favorite by the current user
+    """
+
+    stmt = select(func.count(UserMediaEntry.media_id)).where(
+        UserMediaEntry.user_id == current_user.id,
+        UserMediaEntry.is_favorite == True
+    )
+
+    result = await session.execute(stmt)
+    count = result.scalar() or 0
+
+    return count
+
+
 @router.get("/stats", response_model=WatchlistStats)
 async def get_watchlist_stats(
         current_user: User = Depends(get_current_active_user),

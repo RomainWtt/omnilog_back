@@ -105,6 +105,7 @@ async def get_media_comments(
         )
         .where(Review.media_id == media_id)
         .where(Review.is_visible == True)
+        .where(func.length(func.trim(Review.content)) > 0)
     )
 
     # Exclure les commentaires signalés par cet utilisateur
@@ -141,6 +142,7 @@ async def get_media_comments_count(
         select(func.count(Review.id))
         .where(Review.media_id == media_id)
         .where(Review.is_visible == True)
+        .where(func.length(func.trim(Review.content)) > 0)
     )
 
     query = await exclude_report_review(exclude_reported_by, query)
@@ -506,4 +508,3 @@ async def toggle_is_report(
     await session.refresh(review)
 
     return review.is_report
-
