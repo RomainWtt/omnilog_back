@@ -81,21 +81,20 @@ async def get_recommendations(
     3. Count frequency of appearance for each recommendation
     4. Exclude media already in user's library
     5. Sort by Frequency (desc) then TMDB Score (desc)
+    6. Mark which media are in library and their status
     """
 
-    # 1. Fetch ALL user library items (to exclude them from recommendations)
+    # 1. Fetch ALL user library items (to track library status)
     full_library = await crud_media.get_user_library(session=session, user_id=current_user.id, limit=1000)
 
-    # Store TMDB IDs in a set for O(1) lookup
-    library_tmdb_ids = set()
+    # Store TMDB IDs in a dict: {tmdb_id: ListStatus}
+    library_tmdb_map: Dict[int, ListStatus] = {}
     for entry in full_library:
-        # We need to fetch the media object to get the tmdb_id
         media = await crud_media.get_media_by_id(session, entry.media_id)
         if media:
-            library_tmdb_ids.add(media.tmdb_id)
+            library_tmdb_map[media.tmdb_id] = entry.list_status
 
-    # 2. Get Source Media (Completed & Score >= 4.0)
-    # We take the top 10 most recently completed/rated high scores to keep recs fresh
+    # 2. Get Source Media (Completed & Score >= 8.0)
     liked_entries = await crud_media.get_top_rated_completed(
         session=session,
         user_id=current_user.id,
@@ -109,13 +108,18 @@ async def get_recommendations(
         tmdb_results = await tmdb_service.get_top_rated_movies(page=1)
         results = []
         for item in tmdb_results.get("results", []):
-            if item["id"] not in library_tmdb_ids:
-                media_read = _map_tmdb_to_schema(item, MediaType.MOVIE)
-                results.append(media_read)
+            tmdb_id = item["id"]
+            media_read = _map_tmdb_to_schema(item, MediaType.MOVIE)
+
+            # Mark if in library
+            if tmdb_id in library_tmdb_map:
+                media_read.in_library = True
+                media_read.library_status = library_tmdb_map[tmdb_id]
+
+            results.append(media_read)
         return results[:limit]
 
     # --- MAIN ALGORITHM ---
-
     tasks = []
 
     # Create async tasks to fetch similar media for each liked entry
@@ -141,44 +145,48 @@ async def get_recommendations(
         for item in results:
             tmdb_id = item.get("id")
 
-            # Filter: Don't recommend what is already in library
-            if tmdb_id in library_tmdb_ids:
-                continue
-
             if tmdb_id in candidates:
                 candidates[tmdb_id]["count"] += 1
             else:
                 candidates[tmdb_id] = {
                     "count": 1,
                     "vote_average": item.get("vote_average", 0),
-                    "data": item
+                    "data": item,
+                    "in_library": tmdb_id in library_tmdb_map,
+                    "library_status": library_tmdb_map.get(tmdb_id)
                 }
 
     # Convert to list for sorting
     recommendation_list = list(candidates.values())
 
     # SORTING:
-    # 1. Frequency (count) - Descending
-    # 2. Vote Average - Descending
-    recommendation_list.sort(key=lambda x: (x["count"], x["vote_average"]), reverse=True)
+    # 1. Items NOT in library first
+    # 2. Frequency (count) - Descending
+    # 3. Vote Average - Descending
+    recommendation_list.sort(
+        key=lambda x: (
+            x["in_library"],  # False (not in library) comes first
+            -x["count"],  # Higher count first
+            -x["vote_average"]  # Higher rating first
+        )
+    )
 
     # Map to Schema
     final_results = []
     for rec in recommendation_list[:limit]:
         item_data = rec["data"]
 
-        # Determine media type (often missing in 'similar' response, infer from fields)
+        # Determine media type
         if "title" in item_data:
             m_type = MediaType.MOVIE
         elif "name" in item_data:
             m_type = MediaType.TV
         else:
-            continue  # Skip if unknown
+            continue
 
         genre_objects = []
         if "genre_ids" in item_data:
             genre_ids = item_data["genre_ids"]
-            # Query genres from your database
             stmt = select(Genre).where(
                 Genre.id.in_(genre_ids),
                 Genre.media_type == m_type
@@ -187,6 +195,10 @@ async def get_recommendations(
             genre_objects = result.scalars().all()
 
         mapped_media = _map_tmdb_to_schema(item_data, m_type, genre_objects)
+
+        mapped_media.in_library = rec["in_library"]
+        mapped_media.library_status = rec["library_status"]
+
         final_results.append(mapped_media)
 
     return final_results
@@ -232,6 +244,7 @@ def _map_tmdb_to_schema(item: dict, media_type: MediaType, genre_objects: List[G
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
+
 
 @router.get("/stats", response_model=WatchlistStats)
 async def get_watchlist_stats(
@@ -598,7 +611,6 @@ async def toggle_favorite(
         is_favorite=not entry.is_favorite
     )
 
-    # 🆕 Notifier seulement si passage en favori (pas si retrait)
     if updated_entry.is_favorite and not was_favorite:
         media = await crud_media.get_media_by_id(session, media_id)
         await notification_service.notify_all_friends(
@@ -612,3 +624,28 @@ async def toggle_favorite(
         )
 
     return updated_entry
+
+
+@router.get("/user/{user_id}/media/{media_id}", response_model=UserMediaEntryRead | None)
+async def get_user_media_entry(
+        user_id: UUID,
+        media_id: UUID,
+        current_user: User = Depends(get_current_active_user),
+        session: AsyncSession = Depends(get_session)
+):
+    """
+    Get a specific user's library entry for a specific media
+
+    Note: This allows viewing other users' media entries (useful for friends/social features)
+    """
+    # Récupérer l'entrée pour l'utilisateur spécifié
+    entry = await crud_media.get_user_media_entry(
+        session=session,
+        user_id=user_id,
+        media_id=media_id
+    )
+
+    if not entry:
+        return None
+
+    return entry

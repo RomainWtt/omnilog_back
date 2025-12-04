@@ -181,7 +181,7 @@ async def get_user_reviews(
     result = await session.execute(
         select(func.count())
         .select_from(Review)
-        .where(Review.user_id == current_user.id)
+        .where(Review.user_id == current_user.id, Review.is_visible == True)
     )
     total = result.scalar_one()
 

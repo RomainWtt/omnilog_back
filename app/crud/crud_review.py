@@ -150,6 +150,7 @@ async def get_media_comments_count(
     result = await session.execute(query)
     return result.scalar_one()
 
+
 async def get_user_reviews(
         session: AsyncSession,
         user_id: UUID,
@@ -166,7 +167,7 @@ async def get_user_reviews(
             selectinload(Review.user),
             selectinload(Review.reports)
         )
-        .where(Review.user_id == user_id)
+        .where(Review.user_id == user_id, Review.is_visible == True)
     )
 
     stmt = stmt.order_by(Review.created_at.desc()).limit(limit).offset(offset)
@@ -485,3 +486,24 @@ async def get_media_average_rating_friend(
     avg = result.scalar_one()
 
     return float(avg) if avg is not None else None
+
+
+async def toggle_is_report(
+        session: AsyncSession,
+        review_id: UUID
+) -> bool:
+    # Récupérer la review
+    review = await session.get(Review, review_id)
+
+    if not review:
+        raise ValueError(f"Review {review_id} not found")
+
+    # Toggle la valeur
+    review.is_report = not review.is_report
+
+    # Commit les changements
+    await session.commit()
+    await session.refresh(review)
+
+    return review.is_report
+
