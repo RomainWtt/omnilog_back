@@ -24,7 +24,6 @@ from app.core.deps import get_current_user, get_optional_current_user
 from app.db.models import User, NotificationType
 from app.services.notification_service import notification_service
 
-
 router = APIRouter()
 
 
@@ -260,20 +259,28 @@ async def create_review(
         media_id=review_data.media_id
     )
 
-    if existing_review:
+    if existing_review and len(existing_review.content) > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="already reviewed"
         )
 
-    # 1. Créer la review (CRUD pur, sans notification)
-    review = await crud_review.create_review(
-        session=session,
-        user_id=current_user.id,
-        media_id=review_data.media_id,
-        rating=review_data.rating,
-        content=review_data.content
-    )
+    if existing_review:
+        review = await crud_review.update_review(
+            session=session,
+            review_id=existing_review.id,
+            content=review_data.content,
+            rating=review_data.rating,
+        )
+    else:
+        # 1. Créer la review (CRUD pur, sans notification)
+        review = await crud_review.create_review(
+            session=session,
+            user_id=current_user.id,
+            media_id=review_data.media_id,
+            rating=review_data.rating,
+            content=review_data.content
+        )
 
     # 2. Récupérer le titre du média
     from app.crud import crud_media
