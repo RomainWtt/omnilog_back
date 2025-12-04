@@ -155,15 +155,28 @@ async def test_search_with_filters(authenticated_client: tuple[AsyncClient, dict
 
     assert response.status_code == 200
     data = response.json()
+
     assert "results" in data
-    # Devrait retourner seulement Fight Club qui matche les filtres
+    assert "page" in data
+    assert "total_pages" in data
+    assert "total_results" in data
+
     assert len(data["results"]) == 1
-    assert data["results"][0]["id"] == 550
+    result = data["results"][0]
+
+    assert result["tmdb_id"] == 550
+    assert result["title"] == "Fight Club"
+    assert result["media_type"] == "movie"
+
+    assert "in_library" in result
+    assert "library_status" in result
+    assert result["in_library"] is False  # Pas dans la librairie du user
+    assert result["library_status"] is None
 
 
 @pytest.mark.asyncio
 async def test_search_with_runtime_filter_error(authenticated_client: tuple[AsyncClient, dict]):
-    """Test that runtime filters with keyword search return an error"""
+    """Test that runtime filters with keyword search return empty results"""
     client, tokens = authenticated_client
 
     response = await client.get(
@@ -172,8 +185,12 @@ async def test_search_with_runtime_filter_error(authenticated_client: tuple[Asyn
 
     assert response.status_code == 200
     data = response.json()
-    assert "error" in data
-    assert "runtime" in data["error"].lower()
+
+    assert "results" in data
+    assert len(data["results"]) == 0
+    assert data["page"] == 1
+    assert data["total_pages"] == 0
+    assert data["total_results"] == 0
 
 
 @pytest.mark.asyncio
