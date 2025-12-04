@@ -47,33 +47,51 @@ async def session() -> AsyncGenerator[AsyncSession, None]:
     """Create test database session"""
     async with test_engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
-    
+
     async with TestSessionLocal() as session:
         yield session
-    
+
     async with test_engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.drop_all)
 
 
+@pytest.fixture(scope="function", autouse=True)
+async def mock_redis():
+    """Mock Redis service globally for all tests"""
+    with patch('app.services.redis_service.redis_service.get_top_movies',
+               new_callable=AsyncMock, return_value=None), \
+            patch('app.services.redis_service.redis_service.set_top_movies',
+                  new_callable=AsyncMock, return_value=True), \
+            patch('app.services.redis_service.redis_service.get_top_tv',
+                  new_callable=AsyncMock, return_value=None), \
+            patch('app.services.redis_service.redis_service.set_top_tv',
+                  new_callable=AsyncMock, return_value=True), \
+            patch('app.services.redis_service.redis_service.get_top_media',
+                  new_callable=AsyncMock, return_value=None), \
+            patch('app.services.redis_service.redis_service.set_top_media',
+                  new_callable=AsyncMock, return_value=True), \
+            patch('app.services.redis_service.redis_service.get_genre_media',
+                  new_callable=AsyncMock, return_value=None), \
+            patch('app.services.redis_service.redis_service.set_genre_media',
+                  new_callable=AsyncMock, return_value=True):
+        yield
+
+
 @pytest.fixture(scope="function")
 async def client(session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """Create test client with mocked Redis"""
+    """Create test client"""
+
     async def override_get_session():
         yield session
-    
+
     app.dependency_overrides[get_session] = override_get_session
-    
-    # Mock Redis service to avoid connection errors in tests
-    with patch('app.services.redis_service.redis_service.get_top_movies', 
-               new_callable=AsyncMock, return_value=None):
-        with patch('app.services.redis_service.redis_service.set_top_movies',
-                   new_callable=AsyncMock, return_value=True):
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
-                yield client
-    
+
+    async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test"
+    ) as client:
+        yield client
+
     app.dependency_overrides.clear()
 
 
@@ -90,8 +108,8 @@ def test_user_data():
 
 @pytest.fixture
 async def authenticated_client(
-    client: AsyncClient,
-    test_user_data: dict
+        client: AsyncClient,
+        test_user_data: dict
 ) -> AsyncGenerator[tuple[AsyncClient, dict], None]:
     """Create authenticated client"""
     # Register user
@@ -100,7 +118,7 @@ async def authenticated_client(
         json=test_user_data
     )
     assert response.status_code == 201
-    
+
     # Login
     response = await client.post(
         "/api/v1/auth/login",
@@ -111,11 +129,12 @@ async def authenticated_client(
     )
     assert response.status_code == 200
     tokens = response.json()
-    
+
     # Set authorization header
     client.headers["Authorization"] = f"Bearer {tokens['access_token']}"
-    
+
     yield client, tokens
+
 
 @pytest.fixture
 async def test_user(session: AsyncSession) -> User:

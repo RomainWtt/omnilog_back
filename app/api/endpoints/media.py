@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime
 from typing import Optional, Dict, List
 from uuid import UUID
+from typing import Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select
@@ -18,113 +19,397 @@ from app.schemas.media import (
 )
 from app.schemas.tv import TVSeasonsSchema, SeasonSchema, EpisodeSchema
 from app.services.redis_service import redis_service
+from datetime import datetime
+import asyncio
 from app.services.tmdb_service import tmdb_service
 
 router = APIRouter()
+
+
+async def _fetch_and_filter_results(
+        query: Optional[str],
+        media_type: Optional[MediaType],
+        filters: dict,
+        required_genre_ids: Set[int],
+        min_year: Optional[int],
+        max_year: Optional[int],
+        min_rating: Optional[float],
+        max_pages: int = 5
+) -> list:
+    """
+    Helper pour fetch et filtrer les résultats (movies et/ou TV).
+    Utilisé par search_media et discover_media pour éviter la duplication.
+    """
+    all_filtered_results = []
+
+    search_movie = not media_type or media_type == MediaType.MOVIE
+    search_tv = not media_type or media_type == MediaType.TV
+
+    # Fetch movies
+    if search_movie:
+        for p in range(1, max_pages + 1):
+            try:
+                if query:
+                    movie_results = await tmdb_service.search_movie(query, p)
+                else:
+                    movie_filters = filters.copy()
+                    movie_results = await tmdb_service.discover_media("movie", p, **movie_filters)
+
+                movies = movie_results.get("results", [])
+                if not movies:
+                    break
+
+                # Filter each movie
+                for movie in movies:
+                    if _matches_filters(
+                            movie, required_genre_ids, min_year, max_year, min_rating
+                    ):
+                        all_filtered_results.append(movie)
+
+                # Stop if we have enough results
+                if len(all_filtered_results) >= 20:
+                    break
+
+                # Stop if last page
+                if len(movies) < 20:
+                    break
+
+            except HTTPException as e:
+                if e.status_code == 429:  # Rate limit
+                    await asyncio.sleep(1)
+                    continue
+                raise
+
+    # Fetch TV shows
+    if search_tv:
+        for p in range(1, max_pages + 1):
+            try:
+                if query:
+                    tv_results = await tmdb_service.search_tv(query, p)
+                else:
+                    tv_filters = filters.copy()
+                    tv_results = await tmdb_service.discover_media("tv", p, **tv_filters)
+
+                shows = tv_results.get("results", [])
+                if not shows:
+                    break
+
+                # Filter each show
+                for show in shows:
+                    if _matches_filters(
+                            show, required_genre_ids, min_year, max_year, min_rating
+                    ):
+                        all_filtered_results.append(show)
+
+                # Stop if we have enough results
+                if len(all_filtered_results) >= 20:
+                    break
+
+                # Stop if last page
+                if len(shows) < 20:
+                    break
+
+            except HTTPException as e:
+                if e.status_code == 429:  # Rate limit
+                    await asyncio.sleep(1)
+                    continue
+                raise
+
+    return all_filtered_results
 
 
 @router.get("/search", response_model=dict)
 async def search_media(
         query: str = Query(..., min_length=1, description="Search query"),
         media_type: Optional[MediaType] = Query(None, description="Filter by media type (movie or tv)"),
+        genre_ids: Optional[str] = Query(None, description="Comma-separated genre IDs (AND logic)"),
+        min_year: Optional[int] = Query(None, description="Minimum release year"),
+        max_year: Optional[int] = Query(None, description="Maximum release year"),
+        min_rating: Optional[float] = Query(None, ge=0, le=10, description="Minimum vote average"),
+        min_runtime: Optional[int] = Query(None, description="Minimum runtime in minutes (movies only)"),
+        max_runtime: Optional[int] = Query(None, description="Maximum runtime in minutes (movies only)"),
         page: int = Query(1, ge=1, description="Page number"),
         session: AsyncSession = Depends(get_session),
 ):
     """
-    Search for media (movies and TV shows) by title
-    
-    First checks local database, then queries TMDB API and stores results
-    """
-    # Search local database first
-    local_results = await crud_media.search_media_by_title(
-        session=session,
-        query=query,
-        limit=20
-    )
+    Search for movies and TV shows via TMDB with optional filters.
 
-    # If we have local results, return them
-    if local_results:
+    IMPORTANT: Runtime filters are NOT supported with keyword search because
+    the TMDB search API doesn't return runtime information. For runtime filtering,
+    use the /discover endpoint instead.
+
+    When other filters are present: fetches multiple pages from TMDB and filters results
+    to ensure we have enough matching items.
+    """
+
+    print("=" * 80)
+    print("🔍 SEARCH ENDPOINT")
+    print(f"query: {query}")
+    print(f"genre_ids: {genre_ids}")
+    print(f"filters: year={min_year}-{max_year}, rating={min_rating}, runtime={min_runtime}-{max_runtime}")
+    print("=" * 80)
+
+    # Check for runtime filters with keyword search
+    if (min_runtime or max_runtime) and query:
+        print("⚠️ Runtime filters with keyword search - returning error")
         return {
-            "results": [MediaRead.model_validate(media) for media in local_results],
-            "page": page,
-            "source": "local"
+            "results": [],
+            "page": 1,
+            "total_pages": 0,
+            "total_results": 0,
+            "source": "error",
+            "error": "Runtime filtering is not supported with keyword search. Please use the /discover endpoint for runtime-based filtering, or remove the runtime filter to search by keyword.",
+            "has_more": False
         }
 
-    # Otherwise, search TMDB
     try:
-        if media_type == MediaType.MOVIE:
-            tmdb_results = await tmdb_service.search_movie(query, page)
-        elif media_type == MediaType.TV:
-            tmdb_results = await tmdb_service.search_tv(query, page)
-        else:
-            tmdb_results = await tmdb_service.search_multi(query, page)
+        has_filters = bool(genre_ids or min_year or max_year or min_rating)
 
-        # Store results in database
-        stored_media = []
-        for item in tmdb_results.get("results", []):
-            media_type_value = item.get("media_type")
-            if not media_type_value:
-                # Determine from endpoint used
-                if "title" in item:
-                    media_type_value = "movie"
-                elif "name" in item:
-                    media_type_value = "tv"
-                else:
-                    continue
-
-            # Check if media already exists
-            existing_media = await crud_media.get_media_by_tmdb_id(
-                session=session,
-                tmdb_id=item["id"],
-                media_type=MediaType(media_type_value)
-            )
-
-            if not existing_media:
-                # Create media entry
-                # Parse date string to date object
-                release_date_str = item.get("release_date") or item.get("first_air_date")
-                release_date = None
-                if release_date_str:
-                    try:
-                        from datetime import datetime
-                        release_date = datetime.strptime(release_date_str, "%Y-%m-%d").date()
-                    except (ValueError, TypeError):
-                        release_date = None
-
-                media_data = {
-                    "tmdb_id": item["id"],
-                    "media_type": MediaType(media_type_value),
-                    "title": item.get("title") or item.get("name"),
-                    "original_title": item.get("original_title") or item.get("original_name"),
-                    "overview": item.get("overview"),
-                    "poster_path": item.get("poster_path"),
-                    "backdrop_path": item.get("backdrop_path"),
-                    "release_date": release_date,
-                    "popularity": item.get("popularity"),
-                    "vote_average": item.get("vote_average"),
-                    "vote_count": item.get("vote_count"),
-                    "original_language": item.get("original_language")
-                }
-
-                media = await crud_media.create_media(session=session, **media_data)
-                stored_media.append(media)
+        if not has_filters:
+            # Simple keyword search without filters
+            if media_type == MediaType.MOVIE:
+                movie_results = await tmdb_service.search_movie(query, page)
+                all_results = movie_results.get("results", [])
+                total_pages = movie_results.get("total_pages", 1)
+            elif media_type == MediaType.TV:
+                tv_results = await tmdb_service.search_tv(query, page)
+                all_results = tv_results.get("results", [])
+                total_pages = tv_results.get("total_pages", 1)
             else:
-                stored_media.append(existing_media)
+                # Both
+                movie_results = await tmdb_service.search_movie(query, page)
+                tv_results = await tmdb_service.search_tv(query, page)
+                all_results = movie_results.get("results", []) + tv_results.get("results", [])
+                all_results.sort(key=lambda x: x.get("popularity", 0), reverse=True)
+                total_pages = max(
+                    movie_results.get("total_pages", 1),
+                    tv_results.get("total_pages", 1)
+                )
+
+            return {
+                "results": all_results,
+                "page": page,
+                "total_pages": total_pages,
+                "total_results": len(all_results),
+                "source": "tmdb_search",
+                "has_more": page < total_pages
+            }
+
+        # Search with filters: fetch multiple pages and filter
+        # Parse genre IDs for filtering
+        required_genre_ids: Set[int] = set()
+        if genre_ids:
+            required_genre_ids = {int(gid) for gid in genre_ids.split(',')}
+
+        all_filtered_results = await _fetch_and_filter_results(
+            query=query,
+            media_type=media_type,
+            filters={},
+            required_genre_ids=required_genre_ids,
+            min_year=min_year,
+            max_year=max_year,
+            min_rating=min_rating,
+            max_pages=5
+        )
+
+        # Sort by popularity
+        all_filtered_results.sort(key=lambda x: x.get("popularity", 0), reverse=True)
+
+        print(f"✅ Found {len(all_filtered_results)} results after filtering")
 
         return {
-            "results": [MediaRead.model_validate(media) for media in stored_media],
-            "page": tmdb_results.get("page", page),
-            "total_pages": tmdb_results.get("total_pages", 1),
-            "total_results": tmdb_results.get("total_results", len(stored_media)),
-            "source": "tmdb"
+            "results": all_filtered_results[:20],  # Return first 20
+            "page": 1,
+            "total_pages": 1,
+            "total_results": len(all_filtered_results),
+            "source": f"tmdb_search_filtered",
+            "has_more": len(all_filtered_results) > 20
         }
 
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        print(f"❌ Error in search_media:")
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error searching media: {str(e)}"
+        )
+
+
+def _matches_filters(
+        media: dict,
+        required_genre_ids: Set[int],
+        min_year: Optional[int],
+        max_year: Optional[int],
+        min_rating: Optional[float]
+) -> bool:
+    """
+    Check if a media item matches all filters.
+
+    Note: Runtime parameter removed because the TMDB search API
+    does not return runtime information. Runtime filtering should only be
+    used with the discover endpoint.
+    """
+
+    # Genre filter (AND logic - must have ALL required genres)
+    if required_genre_ids:
+        media_genres = set(media.get("genre_ids", []))
+        if not required_genre_ids.issubset(media_genres):
+            return False
+
+    # Year filter
+    if min_year or max_year:
+        date_str = media.get("release_date") or media.get("first_air_date")
+        if date_str:
+            try:
+                year = int(date_str[:4])
+                if min_year and year < min_year:
+                    return False
+                if max_year and year > max_year:
+                    return False
+            except (ValueError, TypeError):
+                pass
+
+    # Rating filter
+    if min_rating:
+        vote_avg = media.get("vote_average", 0)
+        if vote_avg < min_rating:
+            return False
+
+    return True
+
+
+@router.get("/discover", response_model=dict)
+async def discover_media(
+        media_type: Optional[MediaType] = Query(None, description="Filter by media type (movie or tv)"),
+        genre_ids: Optional[str] = Query(None, description="Comma-separated genre IDs (AND logic)"),
+        min_year: Optional[int] = Query(None, description="Minimum release year"),
+        max_year: Optional[int] = Query(None, description="Maximum release year"),
+        min_rating: Optional[float] = Query(None, ge=0, le=10, description="Minimum vote average"),
+        min_runtime: Optional[int] = Query(None, description="Minimum runtime in minutes"),
+        max_runtime: Optional[int] = Query(None, description="Maximum runtime in minutes"),
+        page: int = Query(1, ge=1, description="Page number"),
+        session: AsyncSession = Depends(get_session)
+):
+    """
+    Discover media with filters only (no keyword search).
+    Fetches multiple pages to ensure we have enough results.
+
+    IMPORTANT NOTES about runtime filtering:
+    - For MOVIES: runtime = total movie duration
+    - For TV SHOWS: runtime = average episode duration (NOT total series duration)
+    - If searching both types, runtime filter applies differently to each
+    """
+    print("=" * 80)
+    print("🔍 DISCOVER ENDPOINT")
+    print(f"media_type: {media_type}")
+    print(f"genre_ids: {genre_ids}")
+    print(f"filters: year={min_year}-{max_year}, rating={min_rating}, runtime={min_runtime}-{max_runtime}")
+    print("=" * 80)
+
+    try:
+        all_media = []
+        pages_to_fetch = 5  # Fetch multiple pages
+
+        # Build base filters
+        base_filters = {}
+        if genre_ids:
+            base_filters["with_genres"] = genre_ids  # AND logic with comma
+        if min_rating:
+            base_filters["vote_average.gte"] = min_rating
+
+        # Prepare tasks for parallel fetching
+        tasks = []
+
+        # Fetch movies
+        if not media_type or media_type == MediaType.MOVIE:
+            movie_filters = base_filters.copy()
+
+            if min_year:
+                movie_filters["primary_release_date.gte"] = f"{min_year}-01-01"
+            if max_year:
+                movie_filters["primary_release_date.lte"] = f"{max_year}-12-31"
+
+            # Runtime filters for movies (total movie duration)
+            if min_runtime:
+                movie_filters["with_runtime.gte"] = min_runtime
+            if max_runtime:
+                movie_filters["with_runtime.lte"] = max_runtime
+
+            print(f"🎬 Fetching movies with filters: {movie_filters}")
+
+            for p in range(1, pages_to_fetch + 1):
+                tasks.append(('movie', tmdb_service.discover_media(
+                    media_type="movie",
+                    page=p,
+                    **movie_filters
+                )))
+
+        # Fetch TV shows
+        if not media_type or media_type == MediaType.TV:
+            tv_filters = base_filters.copy()
+
+            if min_year:
+                tv_filters["first_air_date.gte"] = f"{min_year}-01-01"
+            if max_year:
+                tv_filters["first_air_date.lte"] = f"{max_year}-12-31"
+
+            # Runtime filters for TV shows (average episode duration)
+            if min_runtime:
+                tv_filters["with_runtime.gte"] = min_runtime
+            if max_runtime:
+                tv_filters["with_runtime.lte"] = max_runtime
+
+            print(f"📺 Fetching TV shows with filters: {tv_filters}")
+
+            for p in range(1, pages_to_fetch + 1):
+                tasks.append(('tv', tmdb_service.discover_media(
+                    media_type="tv",
+                    page=p,
+                    **tv_filters
+                )))
+
+        # Execute all requests in parallel
+        results = await asyncio.gather(*[task for _, task in tasks], return_exceptions=True)
+
+        # Process results
+        for result in results:
+            if isinstance(result, Exception):
+                print(f"⚠️ Error fetching page: {result}")
+                continue
+
+            page_results = result.get("results", [])
+            all_media.extend(page_results)
+
+        # Sort by vote_average
+        all_media.sort(key=lambda x: x.get("vote_average", 0), reverse=True)
+
+        print(f"✅ Found {len(all_media)} total results")
+
+        # Return paginated
+        start_idx = (page - 1) * 20
+        end_idx = start_idx + 20
+
+        return {
+            "results": all_media[start_idx:end_idx],
+            "page": page,
+            "total_pages": (len(all_media) + 19) // 20,
+            "total_results": len(all_media),
+            "source": "tmdb_discover",
+            "has_more": len(all_media) > end_idx
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in discover_media:")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error discovering media: {str(e)}"
         )
 
 
@@ -150,7 +435,15 @@ async def get_media_details(
     )
 
     # Fetch full details from TMDB if we don't have them
-    if not media.runtime and not media.number_of_seasons:
+    # Pour les films : vérifier runtime
+    # Pour les séries : vérifier number_of_seasons
+    needs_update = False
+    if media.media_type == MediaType.MOVIE and not media.runtime:
+        needs_update = True
+    elif media.media_type == MediaType.TV and not media.number_of_seasons:
+        needs_update = True
+
+    if needs_update:
         try:
             if media.media_type == MediaType.MOVIE:
                 tmdb_details = await tmdb_service.get_movie_details(media.tmdb_id)
@@ -190,7 +483,9 @@ async def get_media_details(
 
         except Exception as e:
             # Return what we have if TMDB fetch fails
+            print(f"Error fetching TMDB details for {media_id}: {str(e)}")
             pass
+
     media_dict = media.model_dump()
     media_dict["genres"] = [GenreRead.model_validate(g) for g in genres]
     return media_dict
@@ -219,7 +514,6 @@ async def get_media_by_tmdb_id(
         else:
             tmdb_data = await tmdb_service.get_tv_details(tmdb_id)
 
-        # Create media entry
         # Parse date string to date object
         release_date_str = tmdb_data.get("release_date") or tmdb_data.get("first_air_date")
         release_date = None
@@ -276,6 +570,9 @@ async def get_media_by_tmdb_id(
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        print(f"Error fetching media {tmdb_id}:")
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching media: {str(e)}"
@@ -311,11 +608,9 @@ async def get_top_movies(
         all_movies = []
         for p in range(1, 26):  # 25 pages * 20 = 500 movies
             tmdb_results = await tmdb_service.get_top_rated_movies(p)
-            for movie in tmdb_results.get("results", []):
-                movie["media_type"] = "movie"
             all_movies.extend(tmdb_results.get("results", []))
 
-        # Store in Redis (media_type is added by set_top_movies)
+        # Store in Redis
         await redis_service.set_top_movies(all_movies[:500])
 
         # Return requested page
@@ -363,8 +658,6 @@ async def get_top_tv(
         all_tv = []
         for p in range(1, 26):
             tmdb_results = await tmdb_service.get_top_rated_tv(p)
-            for show in tmdb_results.get("results", []):
-                show["media_type"] = "tv"  # Add media_type
             all_tv.extend(tmdb_results.get("results", []))
 
         # Store in Redis
@@ -430,8 +723,6 @@ async def get_top_media(
             all_movies = []
             for p in range(1, 26):
                 tmdb_results = await tmdb_service.get_top_rated_movies(p)
-                for movie in tmdb_results.get("results", []):
-                    movie["media_type"] = "movie"
                 all_movies.extend(tmdb_results.get("results", []))
             cached_movies = all_movies[:500]
             await redis_service.set_top_movies(cached_movies)
@@ -442,8 +733,6 @@ async def get_top_media(
             all_tv = []
             for p in range(1, 26):
                 tmdb_results = await tmdb_service.get_top_rated_tv(p)
-                for show in tmdb_results.get("results", []):
-                    show["media_type"] = "tv"
                 all_tv.extend(tmdb_results.get("results", []))
             cached_tv = all_tv[:500]
             await redis_service.set_top_tv(cached_tv)
@@ -630,9 +919,7 @@ async def get_top_media_by_genre(
                     if not movie_results or "results" not in movie_results:
                         break
 
-                    for movie in movie_results.get("results", []):
-                        movie["media_type"] = "movie"
-                        all_media.append(movie)
+                    all_media.extend(movie_results.get("results", []))
 
                     # Stop if we got less than 20 results (last page)
                     if len(movie_results.get("results", [])) < 20:
@@ -651,9 +938,7 @@ async def get_top_media_by_genre(
                     if not tv_results or "results" not in tv_results:
                         break
 
-                    for show in tv_results.get("results", []):
-                        show["media_type"] = "tv"
-                        all_media.append(show)
+                    all_media.extend(tv_results.get("results", []))
 
                     # Stop if we got less than 20 results (last page)
                     if len(tv_results.get("results", [])) < 20:
