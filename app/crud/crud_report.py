@@ -68,13 +68,13 @@ async def get_all_reports(session: AsyncSession) -> list[ReviewReportRead]:
     return detailed_reports
 
 
-async def approve_report_by_id(session: AsyncSession, report_id: UUID) -> bool:
+async def approve_report_by_id(session: AsyncSession, report_id: UUID) -> UUID | None:
     report = await get_report_by_id(session, report_id)
     if not report:
-        return False
+        return None
 
     await delete_report(session, report_id)
-    return True
+    return report.review_id
 
 
 async def reject_report_by_id(session: AsyncSession, report_id: UUID) -> bool:

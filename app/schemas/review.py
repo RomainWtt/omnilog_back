@@ -1,10 +1,10 @@
 """
 Pydantic schemas for reviews/comments
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from app.schemas.media import MediaBasic
 from uuid import UUID
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 from app.schemas.user import UserPublic
 from pydantic import field_validator
@@ -42,16 +42,8 @@ class ReviewRead(ReviewBase):
     is_reported: Optional[bool] = None
     media: Optional[MediaBasic]
 
-    @field_validator("is_reported", mode="before")
-    def compute_is_reported(cls, v, values):
-        obj = values.get("__object__")
-        if obj and hasattr(obj, "reports"):
-            return len(obj.reports) > 0
-        return False
-
     class Config:
         from_attributes = True
-
 
 class ReviewsPaginated(BaseModel):
     """Paginated reviews response"""

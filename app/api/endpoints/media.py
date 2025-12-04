@@ -4,11 +4,12 @@ from typing import Optional, Dict, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_optional_current_user
 from app.crud import crud_media, crud_genre
-from app.db.models import MediaType, User
+from app.db.models import MediaType, User, ListStatus, Media, UserMediaEntry
 from app.db.session import get_session
 from app.schemas.genre import GenreRead
 from app.schemas.media import (
@@ -246,7 +247,6 @@ async def get_media_by_tmdb_id(
             if "created_by" in tmdb_data:
                 directors = [creator["name"] for creator in tmdb_data["created_by"]]
 
-        print(f"Valeur des genre {tmdb_data.get('genres')}")
         media_data = {
             "tmdb_id": tmdb_id,
             "media_type": media_type,
@@ -390,11 +390,12 @@ async def get_top_tv(
 @router.get("/top/all", response_model=MediaSearch)
 async def get_top_media(
         page: int = Query(1, ge=1, le=25),
+        current_user: Optional[User] = Depends(get_optional_current_user),
         session: AsyncSession = Depends(get_session)
 ):
     """
     Get top rated media (movies + TV combined, sorted by vote_average)
-    Returns properly structured MediaRead objects
+    Returns properly structured MediaRead objects with library status if user is authenticated
     """
     # Check Redis cache
     cached_media = await redis_service.get_top_media()
@@ -405,6 +406,14 @@ async def get_top_media(
 
         # Convert cached dict to MediaRead objects
         media_objects = [_tmdb_to_media_read(item) for item in cached_media[start_idx:end_idx]]
+
+        # Enrich with library status if user is authenticated
+        if current_user:
+            media_objects = await _enrich_with_library_status(
+                session=session,
+                user_id=current_user.id,
+                media_list=media_objects
+            )
 
         return MediaSearch(
             results=media_objects,
@@ -453,6 +462,14 @@ async def get_top_media(
         # Convert to MediaRead objects
         media_objects = [_tmdb_to_media_read(item) for item in all_media[start_idx:end_idx]]
 
+        # Enrich with library status if user is authenticated
+        if current_user:
+            media_objects = await _enrich_with_library_status(
+                session=session,
+                user_id=current_user.id,
+                media_list=media_objects
+            )
+
         return MediaSearch(
             results=media_objects,
             page=page,
@@ -465,6 +482,50 @@ async def get_top_media(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching top media: {str(e)}"
         )
+
+
+async def _enrich_with_library_status(
+        session: AsyncSession,
+        user_id: UUID,
+        media_list: List[MediaRead]
+) -> List[MediaRead]:
+    """
+    Enrich a list of MediaRead objects with library status information.
+
+    Args:
+        session: Database session
+        user_id: Current user ID
+        media_list: List of MediaRead objects to enrich
+
+    Returns:
+        Same list with in_library and library_status fields populated
+    """
+    # Extract all TMDB IDs from the media list
+    tmdb_ids = [media.tmdb_id for media in media_list]
+
+    # Query user's library for these TMDB IDs
+    # Note: You'll need to join Media and UserMediaEntry tables
+
+    stmt = select(Media.tmdb_id, UserMediaEntry.list_status).join(
+        UserMediaEntry, Media.id == UserMediaEntry.media_id
+    ).where(
+        UserMediaEntry.user_id == user_id,
+        Media.tmdb_id.in_(tmdb_ids)
+    )
+
+    result = await session.execute(stmt)
+    library_map: Dict[int, ListStatus] = {row[0]: row[1] for row in result.all()}
+
+    # Enrich each media object
+    for media in media_list:
+        if media.tmdb_id in library_map:
+            media.in_library = True
+            media.library_status = library_map[media.tmdb_id]
+        else:
+            media.in_library = False
+            media.library_status = None
+
+    return media_list
 
 
 def _tmdb_to_media_read(tmdb_data: dict) -> MediaRead:
@@ -506,16 +567,18 @@ def _tmdb_to_media_read(tmdb_data: dict) -> MediaRead:
     )
 
 
-@router.get("/top/genre/{genre_id}", response_model=dict)
+@router.get("/top/genre/{genre_id}", response_model=MediaSearch)
 async def get_top_media_by_genre(
         genre_id: int,
         media_type: Optional[MediaType] = Query(None, description="Filter by media type (movie or tv)"),
         page: int = Query(1, ge=1, le=25),
+        current_user: Optional[User] = Depends(get_optional_current_user),
         session: AsyncSession = Depends(get_session)
 ):
     """
     Get top rated media filtered by genre (cached for performance)
     Fetches from TMDB's discover endpoint and caches results
+    Returns properly structured MediaRead objects with library status if user is authenticated
     """
     # Determine cache key based on media_type
     cache_type = "all" if not media_type else media_type.value
@@ -527,12 +590,24 @@ async def get_top_media_by_genre(
         if cached_media:
             start_idx = (page - 1) * 20
             end_idx = start_idx + 20
-            return {
-                "results": cached_media[start_idx:end_idx],
-                "page": page,
-                "total_pages": min(25, len(cached_media) // 20 + 1),
-                "source": "cache"
-            }
+
+            # Convert cached dict to MediaRead objects
+            media_objects = [_tmdb_to_media_read(item) for item in cached_media[start_idx:end_idx]]
+
+            # Enrich with library status if user is authenticated
+            if current_user:
+                media_objects = await _enrich_with_library_status(
+                    session=session,
+                    user_id=current_user.id,
+                    media_list=media_objects
+                )
+
+            return MediaSearch(
+                results=media_objects,
+                page=page,
+                total_pages=min(25, len(cached_media) // 20 + 1),
+                total_results=len(cached_media)
+            )
     except Exception as e:
         # Log cache error but continue to fetch from TMDB
         print(f"Cache error for genre {genre_id}: {str(e)}")
@@ -588,12 +663,12 @@ async def get_top_media_by_genre(
 
         # If no results found, return empty
         if not all_media:
-            return {
-                "results": [],
-                "page": page,
-                "total_pages": 0,
-                "source": "tmdb"
-            }
+            return MediaSearch(
+                results=[],
+                page=page,
+                total_pages=0,
+                total_results=0
+            )
 
         # Sort by vote_average if combining both types
         if not media_type:
@@ -612,12 +687,23 @@ async def get_top_media_by_genre(
         start_idx = (page - 1) * 20
         end_idx = start_idx + 20
 
-        return {
-            "results": all_media[start_idx:end_idx],
-            "page": page,
-            "total_pages": min(25, len(all_media) // 20 + 1),
-            "source": "tmdb"
-        }
+        # Convert to MediaRead objects
+        media_objects = [_tmdb_to_media_read(item) for item in all_media[start_idx:end_idx]]
+
+        # Enrich with library status if user is authenticated
+        if current_user:
+            media_objects = await _enrich_with_library_status(
+                session=session,
+                user_id=current_user.id,
+                media_list=media_objects
+            )
+
+        return MediaSearch(
+            results=media_objects,
+            page=page,
+            total_pages=min(25, len(all_media) // 20 + 1),
+            total_results=len(all_media)
+        )
 
     except HTTPException:
         raise

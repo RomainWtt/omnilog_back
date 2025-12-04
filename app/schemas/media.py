@@ -61,6 +61,8 @@ class MediaRead(MediaBase):
     vote_count: Optional[int] = None
     created_at: datetime
     updated_at: datetime
+    in_library: bool = False
+    library_status: Optional[ListStatus] = None
     
     class Config:
         from_attributes = True

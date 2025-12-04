@@ -182,6 +182,7 @@ class Review(SQLModel, table=True):
     content: Optional[str] = Field(default=None, max_length=5000)
     rating: int = Field(ge=1, le=5)
     is_visible: bool = Field(default=True)
+    is_report : bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
