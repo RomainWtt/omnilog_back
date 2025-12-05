@@ -38,7 +38,7 @@ class R2StorageService:
                 region_name='auto'
             )
         return self._client
-    
+
     def _generate_filename(self, folder: str, entity_id: UUID, original_filename: str) -> str:
         """Generate unique filename for avatar"""
         ext = original_filename.rsplit('.', 1)[-1].lower()

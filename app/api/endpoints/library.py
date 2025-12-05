@@ -669,3 +669,68 @@ async def get_user_media_entry(
         return None
 
     return entry
+
+
+@router.get("/user/{user_id}", response_model=list[UserMediaEntryWithMedia])
+async def get_user_library(
+        user_id: UUID,
+        status: Optional[ListStatus] = Query(None, description="Filter by list status"),
+        limit: int = Query(50, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+        current_user: User = Depends(get_current_active_user),
+        session: AsyncSession = Depends(get_session)
+):
+    """
+    Get a specific user's media library (for viewing other profiles)
+
+    Can filter by status: watching, completed, plan_to_watch, dropped, on_hold, favorite
+    """
+    # Optionnel: vérifier les permissions (ami, profil public, etc.)
+
+    entries = await crud_media.get_user_library(
+        session=session,
+        user_id=user_id,  # <-- Utilise user_id du path au lieu de current_user
+        status=status,
+        limit=limit,
+        offset=offset
+    )
+
+    result = []
+    for entry in entries:
+        media = await crud_media.get_media_by_id(session, entry.media_id)
+        if media:
+            entry_dict = UserMediaEntryRead.model_validate(entry).model_dump()
+            entry_dict["media"] = media
+            result.append(UserMediaEntryWithMedia(**entry_dict))
+
+    return result
+
+
+@router.get("/user/{user_id}/favorites", response_model=list[UserMediaEntryWithMedia])
+async def get_user_favorites(
+        user_id: UUID,
+        limit: int = Query(100, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+        current_user: User = Depends(get_current_active_user),
+        session: AsyncSession = Depends(get_session)
+):
+    """
+    Get a specific user's favorite media (where is_favorite=True)
+    """
+
+    entries = await crud_media.get_user_favorites(  # ← Utilise la nouvelle fonction CRUD
+        session=session,
+        user_id=user_id,
+        limit=limit,
+        offset=offset
+    )
+
+    result = []
+    for entry in entries:
+        media = await crud_media.get_media_by_id(session, entry.media_id)
+        if media:
+            entry_dict = UserMediaEntryRead.model_validate(entry).model_dump()
+            entry_dict["media"] = media
+            result.append(UserMediaEntryWithMedia(**entry_dict))
+
+    return result

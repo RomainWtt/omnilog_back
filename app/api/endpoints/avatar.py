@@ -78,6 +78,7 @@ async def delete_avatar(
         await crud_user.update_user(
             session=session,
             user_id=current_user.id,
+            allow_none=True,  # AJOUTER CE PARAMÈTRE
             avatar_url=None
         )
     

@@ -83,6 +83,7 @@ async def create_user(
 async def update_user(
         session: AsyncSession,
         user_id: UUID,
+        allow_none: bool = False,  # Nouveau paramètre
         **update_data
 ) -> Optional[User]:
     """Update user information"""
@@ -95,8 +96,10 @@ async def update_user(
         update_data["hashed_password"] = get_password_hash(update_data.pop("password"))
 
     for key, value in update_data.items():
-        if hasattr(user, key) and value is not None:
-            setattr(user, key, value)
+        if hasattr(user, key):
+            # Permettre None si allow_none=True OU si value n'est pas None
+            if allow_none or value is not None:
+                setattr(user, key, value)
 
     await session.commit()
     await session.refresh(user)

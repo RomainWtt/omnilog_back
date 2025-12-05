@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, validator
 from uuid import UUID
 from typing import Optional
 from datetime import date, datetime
@@ -33,7 +33,7 @@ class UserUpdate(BaseModel):
     avatar_url: Optional[str] = None
     birth_date: Optional[date] = None
     social_links: Optional[dict] = None
-
+    current_password: Optional[str] = None
 
 class UserRead(UserBase):
     id: UUID

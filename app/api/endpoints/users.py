@@ -1,5 +1,5 @@
+# app/api/routes/users.py - version mise à jour
 from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +8,7 @@ from app.schemas.user import UserRead, UserUpdate, UserPublic
 from app.crud import crud_user
 from app.core.deps import get_current_active_user, get_current_admin_user
 from app.db.models import User
+from app.core.security import verify_password
 
 router = APIRouter()
 
@@ -44,9 +45,9 @@ async def search_new_friends(
 
 @router.get("/admin/search", response_model=list[UserRead])
 async def search_user_admin(
-    query: str,
-    is_active: bool | None = None,
-    session: AsyncSession = Depends(get_session),
+        query: str,
+        is_active: bool | None = None,
+        session: AsyncSession = Depends(get_session),
 ):
     return await crud_user.search_users_by_query(
         query=query,
@@ -57,7 +58,7 @@ async def search_user_admin(
 
 @router.get("/me", response_model=UserRead)
 async def get_current_user_profile(
-    current_user: User = Depends(get_current_active_user)
+        current_user: User = Depends(get_current_active_user)
 ):
     """
     Get current user's profile
@@ -74,7 +75,10 @@ async def update_current_user_profile(
     """
     Update current user's profile
     Can update: email, username, password, avatar_url, birth_date, social_links
+
+    Note: Pour changer le mot de passe, current_password et password doivent être fournis
     """
+    # Vérification email
     if user_update.email and user_update.email != current_user.email:
         existing_user = await crud_user.get_user_by_email(session, user_update.email)
         if existing_user:
@@ -83,6 +87,7 @@ async def update_current_user_profile(
                 detail="Email already in use"
             )
 
+    # Vérification username
     if user_update.username and user_update.username != current_user.username:
         existing_user = await crud_user.get_user_by_username(session, user_update.username)
         if existing_user:
@@ -91,7 +96,30 @@ async def update_current_user_profile(
                 detail="Username already taken"
             )
 
+    # Gestion du changement de mot de passe
+    if user_update.password:
+        # Vérifier que current_password est fourni
+        if not user_update.current_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is required to change password"
+            )
+
+        # Vérifier que le mot de passe actuel est correct
+        if not verify_password(user_update.current_password, current_user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Current password is incorrect"
+            )
+
+    # Préparer les données de mise à jour
     update_data = user_update.model_dump(exclude_unset=True)
+
+    # Retirer current_password des données de mise à jour (ne doit pas être stocké)
+    if 'current_password' in update_data:
+        del update_data['current_password']
+
+    # Mettre à jour l'utilisateur
     updated_user = await crud_user.update_user(
         session=session,
         user_id=current_user.id,
@@ -161,9 +189,9 @@ async def get_user_by_username(
 
 @router.post("/{user_id}/deactivate", response_model=UserRead)
 async def deactivate_user(
-    user_id: UUID,
-    session: AsyncSession = Depends(get_session),
-    admin_user: User = Depends(get_current_admin_user)
+        user_id: UUID,
+        session: AsyncSession = Depends(get_session),
+        admin_user: User = Depends(get_current_admin_user)
 ):
     user = await crud_user.get_user_by_id(session, user_id)
 
@@ -175,7 +203,6 @@ async def deactivate_user(
 
     deactivated_user = await crud_user.deactivate_user(session, user_id)
     return deactivated_user
-
 
 
 @router.post("/{user_id}/activate", response_model=UserRead)
@@ -216,5 +243,3 @@ async def get_all_users(
     )
 
     return users
-
-
