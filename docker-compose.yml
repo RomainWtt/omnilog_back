@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
   db:
     image: postgres:15-alpine
     container_name: omnilog_db
@@ -14,14 +13,13 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-        - caddy
+      - caddy
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Redis Cache
   redis:
     image: redis:7-alpine
     container_name: omnilog_redis
@@ -30,24 +28,19 @@ services:
     volumes:
       - redis_data:/data
     networks:
-        - caddy
+      - caddy
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # FastAPI Backend
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # ✅ PROD: Use the image built by GitLab CI
+    image: git-registry.helmo.be/q220059/omnilog-backend:latest
     container_name: omnilog_api
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8008 --reload
-    volumes:
-      - .:/app
-    networks:
-        - caddy
+    # ✅ PROD: Run directly (no --reload)
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8008
     ports:
       - "8008:8008"
     environment:
@@ -56,6 +49,10 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - DEBUG=True
       - TMDB_API_KEY=${TMDB_API_KEY}
+    volumes:
+      - .:/app
+    networks:
+      - caddy
     depends_on:
       db:
         condition: service_healthy
