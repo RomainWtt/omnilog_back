@@ -1,6 +1,6 @@
 build:docker:
   stage: build
-  image: docker:24
+  image: docker:29
   variables:
     DOCKER_HOST: "unix:///var/run/docker.sock" 
     DOCKER_TLS_CERTDIR: ""
