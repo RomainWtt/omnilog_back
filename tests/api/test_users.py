@@ -86,15 +86,21 @@ async def test_get_user_with_invalid_token(client: AsyncClient):
 async def test_update_password(authenticated_client: tuple[AsyncClient, dict]):
     """Test updating user password"""
     client, tokens = authenticated_client
-    
+
+    # Need to provide both current_password and new password
+    current_password = "TestPass123"  # Password from test_user_data fixture
     new_password = "NewTestPass456"
+
     response = await client.put(
         "/api/v1/users/me",
-        json={"password": new_password}
+        json={
+            "current_password": current_password,
+            "password": new_password
+        }
     )
-    
+
     assert response.status_code == 200
-    
+
     # Verify can login with new password
     client.headers.pop("Authorization")
     login_response = await client.post(
@@ -104,7 +110,7 @@ async def test_update_password(authenticated_client: tuple[AsyncClient, dict]):
             "password": new_password
         }
     )
-    
+
     assert login_response.status_code == 200
 
 

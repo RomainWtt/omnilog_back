@@ -196,3 +196,27 @@ async def get_top_rated_completed(
     query = query.limit(limit).offset(offset)
     result = await session.execute(query)
     return list(result.scalars().all())
+
+
+async def get_user_favorites(
+        session: AsyncSession,
+        user_id: UUID,
+        limit: int = 100,
+        offset: int = 0
+) -> List[UserMediaEntry]:
+    """
+    Get all media entries marked as favorite for a specific user
+    """
+    stmt = (
+        select(UserMediaEntry)
+        .where(
+            UserMediaEntry.user_id == user_id,
+            UserMediaEntry.is_favorite == True
+        )
+        .order_by(UserMediaEntry.updated_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+
+    result = await session.execute(stmt)
+    return result.scalars().all()

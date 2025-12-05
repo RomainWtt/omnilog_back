@@ -14,6 +14,47 @@ class NotificationService:
     """Service centralisé pour gérer les notifications et leur envoi WebSocket"""
 
     @staticmethod
+    async def _check_user_preferences(
+            session: AsyncSession,
+            user_id: UUID,
+            notification_type: NotificationType
+    ) -> bool:
+        """
+        Vérifie si l'utilisateur souhaite recevoir ce type de notification
+
+        Args:
+            session: Session DB
+            user_id: ID de l'utilisateur
+            notification_type: Type de notification à vérifier
+
+        Returns:
+            bool: True si l'utilisateur veut recevoir cette notification
+        """
+        from sqlalchemy import select
+        from app.db.models import User
+
+        try:
+            # Récupérer les préférences de l'utilisateur
+            stmt = select(User.notification_preferences).where(User.id == user_id)
+            result = await session.execute(stmt)
+            preferences = result.scalar_one_or_none()
+
+            # Si pas de préférences définies, accepter par défaut
+            if not preferences:
+                return True
+
+            # Mapper le type de notification à la clé de préférence
+            preference_key = notification_type.value  # "friend_request", "friend_accepted", etc.
+
+            # Vérifier la préférence (par défaut True si la clé n'existe pas)
+            return preferences.get(preference_key, True)
+
+        except Exception as e:
+            print(f"⚠️ Erreur vérification préférences: {e}")
+            # En cas d'erreur, on envoie la notification par sécurité
+            return True
+
+    @staticmethod
     async def send_notification(
             session: AsyncSession,
             user_id: UUID,
@@ -21,7 +62,7 @@ class NotificationService:
             actor_id: Optional[UUID] = None,
             data: Optional[Dict[str, Any]] = None,
             send_websocket: bool = True
-    ) -> NotificationRead:
+    ) -> Optional[NotificationRead]:
         """
         Crée une notification et l'envoie optionnellement via WebSocket
 
@@ -34,9 +75,18 @@ class NotificationService:
             send_websocket: Envoyer via WebSocket (défaut: True)
 
         Returns:
-            NotificationRead: La notification créée
+            NotificationRead: La notification créée, ou None si l'utilisateur ne veut pas recevoir ce type
         """
         try:
+            # 🆕 Vérifier les préférences de l'utilisateur
+            should_notify = await NotificationService._check_user_preferences(
+                session, user_id, notification_type
+            )
+
+            if not should_notify:
+                print(f"ℹ️ Notification {notification_type.value} ignorée pour {user_id} (préférences)")
+                return None
+
             # 1. Créer la notification en DB
             notification = await crud_notification.create_notification(
                 session=session,
@@ -79,7 +129,7 @@ class NotificationService:
             send_websocket: Envoyer via WebSocket (défaut: True)
 
         Returns:
-            List[NotificationRead]: Liste des notifications créées
+            List[NotificationRead]: Liste des notifications créées (exclut celles refusées par préférences)
         """
         try:
             # Récupérer tous les amis
@@ -99,7 +149,7 @@ class NotificationService:
                     else friendship.user_one_id
                 )
 
-                # Créer la notification pour cet ami
+                # Créer la notification pour cet ami (peut retourner None si refusée)
                 notification = await NotificationService.send_notification(
                     session=session,
                     user_id=friend_id,
@@ -109,7 +159,9 @@ class NotificationService:
                     send_websocket=send_websocket
                 )
 
-                notifications.append(notification)
+                # Ajouter uniquement si la notification a été créée
+                if notification:
+                    notifications.append(notification)
 
             print(f"✅ {len(notifications)} ami(s) notifié(s) ({notification_type.value})")
             return notifications
