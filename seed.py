@@ -245,6 +245,12 @@ async def seed_database():
                 status=FriendshipStatus.ACCEPTED
             )
             session.add(friendship)
+            friendship2 = Friendship(
+                user_one_id=users[0].id,
+                user_two_id=users[1].id,
+                status=FriendshipStatus.PENDING
+            )
+            session.add(friendship2)
             await session.commit()
             print("   ✓ 1 friendship")
             

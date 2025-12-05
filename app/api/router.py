@@ -1,10 +1,29 @@
 from fastapi import APIRouter
-from app.api.endpoints import auth, users, media, library, review
+
+from app.api.endpoints import auth, users, media, library, review, oauth, email_verification, notifications, challenge, \
+    memberships, genres, stats
+from app.api.endpoints import friendship
+from app.api.endpoints import report
+from app.api.endpoints import avatar
+from app.api.endpoints import challenge_avatar
+from app.api.endpoints import google_ia
 
 api_router = APIRouter()
 
 api_router.include_router(auth.router, prefix="/auth", tags=["authentication"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
+api_router.include_router(avatar.router, prefix="/users", tags=["users"])
 api_router.include_router(media.router, prefix="/media", tags=["media"])
 api_router.include_router(library.router, prefix="/library", tags=["library"])
 api_router.include_router(review.router, prefix="/review", tags=["review"])
+api_router.include_router(report.router, prefix="/review_reports", tags=["report"])
+api_router.include_router(challenge.router, prefix="/challenges", tags=["challenge"])
+api_router.include_router(challenge_avatar.router, prefix="/challenges", tags=["challenge"])
+api_router.include_router(memberships.router, prefix="/challenge_memberships", tags=["memberships"])
+api_router.include_router(oauth.router, prefix="/oauth")
+api_router.include_router(email_verification.router, prefix="/email", tags=["Email Verification"])
+api_router.include_router(friendship.router, prefix="/friendships", tags=["friendship"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
+api_router.include_router(genres.router, prefix="/genres", tags=["genres"])
+api_router.include_router(google_ia.router, prefix="/google_ia", tags=["google_ia"])
+api_router.include_router(stats.router, prefix="/stats", tags=["stats"])

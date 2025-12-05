@@ -1,7 +1,8 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, validator
 from uuid import UUID
 from typing import Optional
 from datetime import date, datetime
+
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -12,7 +13,7 @@ class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=100)
     birth_date: Optional[date] = None
     avatar_url: Optional[str] = None
-    
+
     @field_validator('password')
     @classmethod
     def validate_password(cls, v: str) -> str:
@@ -32,7 +33,7 @@ class UserUpdate(BaseModel):
     avatar_url: Optional[str] = None
     birth_date: Optional[date] = None
     social_links: Optional[dict] = None
-
+    current_password: Optional[str] = None
 
 class UserRead(UserBase):
     id: UUID
@@ -40,9 +41,15 @@ class UserRead(UserBase):
     birth_date: Optional[date] = None
     is_active: bool
     is_admin: bool
+    email_verified: bool
     created_at: datetime
     social_links: Optional[dict] = None
-    
+
+    # NOUVEAUX CHAMPS OAUTH
+    google_id: Optional[str] = None
+    facebook_id: Optional[str] = None
+    apple_id: Optional[str] = None
+
     class Config:
         from_attributes = True
 
@@ -53,7 +60,8 @@ class UserPublic(BaseModel):
     username: str
     avatar_url: Optional[str] = None
     social_links: Optional[dict] = None
-    
+    is_public: bool
+
     class Config:
         from_attributes = True
 
@@ -65,6 +73,6 @@ class UserStats(BaseModel):
     watching_media: int
     total_watch_time: int  # in minutes
     favorite_genres: list[str]
-    
+
     class Config:
         from_attributes = True

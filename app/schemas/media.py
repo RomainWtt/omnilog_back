@@ -10,7 +10,14 @@ class MediaBase(BaseModel):
     tmdb_id: int
     media_type: MediaType
     title: str
-    
+
+
+class MediaBasic(MediaBase):
+    id: UUID
+    poster_path: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 class MediaCreate(MediaBase):
     original_title: Optional[str] = None
@@ -33,7 +40,7 @@ class MediaCreate(MediaBase):
 
 
 class MediaRead(MediaBase):
-    id: UUID
+    id: Optional[UUID] = None
     original_title: Optional[str] = None
     overview: Optional[str] = None
     poster_path: Optional[str] = None
@@ -54,10 +61,11 @@ class MediaRead(MediaBase):
     vote_count: Optional[int] = None
     created_at: datetime
     updated_at: datetime
+    in_library: bool = False
+    library_status: Optional[ListStatus] = None
     
     class Config:
         from_attributes = True
-
 
 class MediaSearch(BaseModel):
     """Media search result"""

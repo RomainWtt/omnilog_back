@@ -1,3 +1,5 @@
+from time import process_time_ns
+
 from sqlmodel import create_engine, Session, SQLModel
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker

@@ -1,11 +1,17 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.email import send_verification_email
 from app.db.session import get_session
 from app.schemas.user import UserCreate, UserRead
 from app.schemas.token import Token, LoginRequest, RefreshTokenRequest
 from app.crud import crud_user
 from app.core.security import create_access_token, create_refresh_token, decode_token
 from datetime import datetime
+
+from app.services.email_verification import EmailVerificationService
 
 router = APIRouter()
 
@@ -59,7 +65,22 @@ async def register(
         birth_date=user_data.birth_date,
         avatar_url=user_data.avatar_url
     )
-    
+
+    # Générer et envoyer l'email de vérification
+    verification_token = EmailVerificationService.generate_token(user)
+    await session.commit()
+    await session.refresh(user)
+
+    try:
+        await send_verification_email(
+            email=user.email,
+            username=user.username,
+            verification_token=verification_token,
+            frontend_url=os.getenv("FRONTEND_URL", "http://localhost:5173")
+        )
+    except Exception as e:
+        print(f"Failed to send verification email: {e}")
+
     return user
 
 

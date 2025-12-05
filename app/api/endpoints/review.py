@@ -1,10 +1,16 @@
 """
 API routes for reviews/comments
 """
+from typing import Optional, Dict, Any
+
 from fastapi import APIRouter, Query, HTTPException, Depends, status
 from uuid import UUID
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.crud.crud_review import search_reviews_by_query
+from app.crud.crud_friendship import check_friendship_status
 from app.schemas.review import (
     ReviewRead,
     ReviewCreate,
@@ -14,52 +20,79 @@ from app.schemas.review import (
 )
 from app.crud import crud_review
 from app.db.session import get_session
-from app.core.deps import get_current_user
-from app.db.models import User
+from app.core.deps import get_current_user, get_optional_current_user
+from app.db.models import User, NotificationType
+from app.services.notification_service import notification_service
 
 router = APIRouter()
 
 
-# ============================================
-# MEDIA-RELATED ROUTES (must come first to avoid conflicts)
-# ============================================
-
 @router.get("/media/{media_id}", response_model=ReviewsPaginated)
 async def get_comments_for_media(
-    media_id: UUID,
-    page: int = Query(1, ge=1, description="Page number"),
-    session: AsyncSession = Depends(get_session),
+        media_id: UUID,
+        page: int = Query(1, ge=1, description="Page number"),
+        session: AsyncSession = Depends(get_session),
+        current_user: Optional[User] = Depends(get_optional_current_user),
 ):
-    """
-    Get paginated comments for a specific media with user information.
+    PAGE_SIZE = 20
+    offset = (page - 1) * PAGE_SIZE
 
-    Returns only visible comments ordered by most recent first.
-    """
-    offset = (page - 1) * 20
-
+    # Passer l'ID de l'utilisateur si connecté
     comments = await crud_review.get_media_comments(
         session=session,
         media_id=media_id,
-        limit=20,
+        limit=PAGE_SIZE,
         offset=offset,
+        requesting_user_id=current_user.id,
+        exclude_reported_by=current_user.id if current_user else None
     )
 
-    total = await crud_review.get_media_comments_count(session, media_id)
+    total = await crud_review.get_media_comments_count(
+        session,
+        media_id,
+        requesting_user_id=current_user.id,
+        exclude_reported_by=current_user.id if current_user else None
+    )
+
+    total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+
+    results_with_status = []
+    friendship_map: Dict[UUID, bool] = {}
+
+    if current_user:
+        commenter_ids = [comment.user_id for comment in comments if comment.user_id != current_user.id]
+        friendship_map = await check_friendship_status(
+            session, current_user.id, commenter_ids
+        )
+
+    for comment in comments:
+        comment_data: Dict[str, Any] = comment.__dict__.copy()
+        is_friend_status: Optional[bool] = None
+
+        if current_user:
+            is_self = comment.user_id == current_user.id
+            if is_self:
+                is_friend_status = True
+            else:
+                is_friend_status = friendship_map.get(comment.user_id, False)
+
+        comment_data["is_friend"] = is_friend_status
+        results_with_status.append(ReviewRead.model_validate(comment_data))
 
     return {
-        "results": [ReviewRead.model_validate(comment) for comment in comments],
+        "results": results_with_status,
         "page": page,
         "total": total,
-        "pages": (total + 19) // 20,
+        "pages": total_pages,
         "source": "local"
     }
 
 
 @router.get("/media/{media_id}/average", response_model=MediaAverageRating)
 async def get_media_average_rating(
-    media_id: UUID,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+        media_id: UUID,
+        session: AsyncSession = Depends(get_session),
+        current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
     Get the average rating for a specific media.
@@ -67,7 +100,13 @@ async def get_media_average_rating(
     Returns the average rating and total number of ratings.
     """
     average = await crud_review.get_media_average_rating(session, media_id)
+    average_friend = 0
+    print(f"Current User: {current_user}")
+    if current_user is not None:
+        print(f"Id user {current_user.id}")
+        average_friend = await crud_review.get_media_average_rating_friend(session, media_id, current_user.id)
 
+    print(f"Average friends rating = {average_friend}")
     # Get count of ratings
     from sqlalchemy import func, select
     from app.db.models import Review
@@ -84,15 +123,16 @@ async def get_media_average_rating(
     return {
         "media_id": media_id,
         "average_rating": average,
+        "average_rating_friend": average_friend,
         "total_ratings": count
     }
 
 
 @router.get("/media/{media_id}/user", response_model=ReviewRead)
 async def get_current_user_review_for_media(
-    media_id: UUID,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+        media_id: UUID,
+        session: AsyncSession = Depends(get_session),
+        current_user: User = Depends(get_current_user)
 ):
     """
     Get the current user's review for a specific media.
@@ -120,38 +160,41 @@ async def get_current_user_review_for_media(
 
 @router.get("/user/{user_id}", response_model=ReviewsPaginated)
 async def get_user_reviews(
-    user_id: UUID,
-    page: int = Query(1, ge=1, description="Page number"),
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+        user_id: UUID,
+        page: int = Query(1, ge=1, description="Page number"),
+        session: AsyncSession = Depends(get_session),
+        current_user: User = Depends(get_current_user)
 ):
-    """
-    Get all reviews created by a specific user.
-
-    Returns paginated results ordered by most recent first.
-    """
     offset = (page - 1) * 20
 
     reviews = await crud_review.get_user_reviews(
         session=session,
-        user_id=user_id,
+        user_id=current_user.id,
         limit=20,
         offset=offset
     )
 
-    # Count total reviews
     from sqlalchemy import func, select
     from app.db.models import Review
 
     result = await session.execute(
         select(func.count())
         .select_from(Review)
-        .where(Review.user_id == user_id)
+        .where(Review.user_id == current_user.id, Review.is_visible == True)
     )
     total = result.scalar_one()
 
+    # Enrichir avec is_report et valider
+    results = []
+    for review in reviews:
+        review_dict = review.model_dump()
+        review_dict["user"] = review.user
+        review_dict["media"] = review.media
+        review_dict["is_reported"] = len(review.reports) > 0
+        results.append(ReviewRead.model_validate(review_dict))
+
     return {
-        "results": [ReviewRead.model_validate(review) for review in reviews],
+        "results": results,
         "page": page,
         "total": total,
         "pages": (total + 19) // 20,
@@ -159,15 +202,11 @@ async def get_user_reviews(
     }
 
 
-# ============================================
-# GENERAL ROUTES (static paths)
-# ============================================
-
 @router.get("/recent", response_model=list[ReviewRead])
 async def get_recent_reviews(
-    limit: int = Query(10, ge=1, le=50, description="Number of reviews to return"),
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+        limit: int = Query(10, ge=1, le=50, description="Number of reviews to return"),
+        session: AsyncSession = Depends(get_session),
+        current_user: User = Depends(get_current_user)
 ):
     """
     Get the most recent reviews across all media.
@@ -182,15 +221,27 @@ async def get_recent_reviews(
     return [ReviewRead.model_validate(review) for review in reviews]
 
 
+@router.get("/review/search", response_model=list[ReviewRead])
+async def admin_search_reviews(
+        query: str = Query(..., min_length=1, description="Search query with username, media title, content"),
+        limit: int = Query(20, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+        session: AsyncSession = Depends(get_session),
+        is_reported: Optional[bool] = None
+):
+    return await search_reviews_by_query(query=query, session=session, limit=limit, offset=offset,
+                                         is_reported=is_reported)
+
+
 # ============================================
 # REVIEW CRUD ROUTES (generic {review_id} must come last)
 # ============================================
 
 @router.post("/", response_model=ReviewRead, status_code=status.HTTP_201_CREATED)
 async def create_review(
-    review_data: ReviewCreate,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+        review_data: ReviewCreate,
+        session: AsyncSession = Depends(get_session),
+        current_user: User = Depends(get_current_user)
 ):
     """
     Create a new review/comment for a media.
@@ -208,18 +259,45 @@ async def create_review(
         media_id=review_data.media_id
     )
 
-    if existing_review:
+    if existing_review and len(existing_review.content) > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="already reviewed"
         )
 
-    review = await crud_review.create_review(
+    if existing_review:
+        review = await crud_review.update_review(
+            session=session,
+            review_id=existing_review.id,
+            content=review_data.content,
+            rating=review_data.rating,
+        )
+    else:
+        # 1. Créer la review (CRUD pur, sans notification)
+        review = await crud_review.create_review(
+            session=session,
+            user_id=current_user.id,
+            media_id=review_data.media_id,
+            rating=review_data.rating,
+            content=review_data.content
+        )
+
+    # 2. Récupérer le titre du média
+    from app.crud import crud_media
+    media = await crud_media.get_media_by_id(session, review_data.media_id)
+    media_title = media.title if media else "un média"
+
+    # 3. Notifier tous les amis via le service
+    await notification_service.notify_all_friends(
         session=session,
         user_id=current_user.id,
-        media_id=review_data.media_id,
-        rating=review_data.rating,
-        content=review_data.content
+        notification_type=NotificationType.REVIEW_POSTED,
+        data={
+            "media_id": str(review_data.media_id),
+            "media_title": media_title,
+            "review_id": str(review.id),
+            "has_content": review_data.content is not None and len(review_data.content) > 0
+        }
     )
 
     return ReviewRead.model_validate(review)
@@ -227,9 +305,9 @@ async def create_review(
 
 @router.get("/{review_id}", response_model=ReviewRead)
 async def get_review(
-    review_id: UUID,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+        review_id: UUID,
+        session: AsyncSession = Depends(get_session),
+        current_user: User = Depends(get_current_user)
 ):
     """
     Get a specific review by ID.
@@ -247,10 +325,10 @@ async def get_review(
 
 @router.put("/{review_id}", response_model=ReviewRead)
 async def update_review(
-    review_id: UUID,
-    review_data: ReviewUpdate,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+        review_id: UUID,
+        review_data: ReviewUpdate,
+        session: AsyncSession = Depends(get_session),
+        current_user: User = Depends(get_current_user)
 ):
     """
     Update your own review.
@@ -284,9 +362,9 @@ async def update_review(
 
 @router.delete("/{review_id}", response_model=ReviewRead)
 async def delete_review(
-    review_id: UUID,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+        review_id: UUID,
+        session: AsyncSession = Depends(get_session),
+        current_user: User = Depends(get_current_user)
 ):
     """
     Delete your own review (soft delete - sets is_visible to False).
@@ -316,9 +394,9 @@ async def delete_review(
 
 @router.patch("/{review_id}/hide", response_model=ReviewRead)
 async def hide_review(
-    review_id: UUID,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+        review_id: UUID,
+        session: AsyncSession = Depends(get_session),
+        current_user: User = Depends(get_current_user)
 ):
     """
     Hide a review (admin only or own review).
@@ -347,9 +425,9 @@ async def hide_review(
 
 @router.patch("/{review_id}/unhide", response_model=ReviewRead)
 async def unhide_review(
-    review_id: UUID,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+        review_id: UUID,
+        session: AsyncSession = Depends(get_session),
+        current_user: User = Depends(get_current_user)
 ):
     """
     Unhide a review (admin only or own review).

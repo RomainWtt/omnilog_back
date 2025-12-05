@@ -1,20 +1,13 @@
 """
 Pydantic schemas for reviews/comments
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+from app.schemas.media import MediaBasic
 from uuid import UUID
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
-
-
-class UserPublic(BaseModel):
-    """Public user information for reviews"""
-    id: UUID
-    username: str
-    avatar_url: Optional[str] = None
-
-    class Config:
-        from_attributes = True
+from app.schemas.user import UserPublic
+from pydantic import field_validator
 
 
 class ReviewBase(BaseModel):
@@ -45,10 +38,12 @@ class ReviewRead(ReviewBase):
     created_at: datetime
     updated_at: datetime
     user: UserPublic
+    is_friend: Optional[bool] = None
+    is_reported: Optional[bool] = None
+    media: Optional[MediaBasic]
 
     class Config:
         from_attributes = True
-
 
 class ReviewsPaginated(BaseModel):
     """Paginated reviews response"""
@@ -63,4 +58,5 @@ class MediaAverageRating(BaseModel):
     """Average rating for a media"""
     media_id: UUID
     average_rating: Optional[float] = None
+    average_rating_friend: Optional[float] = None
     total_ratings: int

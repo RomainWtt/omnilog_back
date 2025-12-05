@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+
+from starlette.middleware.sessions import SessionMiddleware
+
+from app.api.endpoints import websocket
 from app.core.config import settings
 from app.api.router import api_router
 from app.db.session import init_db
@@ -33,6 +37,15 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+#SessionMiddleware
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.SECRET_KEY,  # Même clé que JWT
+    max_age=3600,
+    same_site="lax",
+    https_only=False  # True en production
+)
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
@@ -44,7 +57,8 @@ app.add_middleware(
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
-
+#Les websockets ne doivent pas avoir de préfix askip
+app.include_router(websocket.router)
 
 @app.get("/")
 async def root():

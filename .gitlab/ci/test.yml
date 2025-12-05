@@ -4,19 +4,20 @@
 test:unit:
   stage: test
   extends: .develop-main-mr
-  image: python:3.11-slim
+  image: ghcr.io/astral-sh/uv:python3.11-bookworm  # Image officielle uv avec Python 3.11
   variables:
     SECRET_KEY: "dummy-secret-key-for-ci-tests"
     TMDB_API_KEY: "dummy-tmdb-key"
     DATABASE_URL: "sqlite+aiosqlite:///./test.db"
   before_script:
-    - pip install -e ".[dev]"
+    # uv sync installe tout depuis uv.lock, garantissant les mêmes versions qu'en local
+    - uv sync --frozen  # --frozen échoue si uv.lock n'est pas à jour
   script:
     - |
       echo "🧪 Exécution des tests unitaires..."
       
-      # Exécuter pytest sans fail-under pour le coverage
-      if pytest tests/ -v --tb=short --junitxml=report.xml --cov=. --cov-report=term --cov-report=html --cov-fail-under=0; then
+      # Utilise uv run pour exécuter pytest dans l'environnement virtuel
+      if uv run pytest tests/ -v --tb=short --junitxml=report.xml --cov=. --cov-report=term --cov-report=html --cov-fail-under=0; then
         echo "tests_status=passed" >> $PIPELINE_STATUS_FILE
         echo "✅ Tests unitaires réussis"
       else
