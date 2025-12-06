@@ -108,12 +108,12 @@ async def seed_database():
     if not is_safe_environment():
         print("❌ ERROR: Not in dev/test environment")
         return False
-    
+
     print("✅ Safe environment detected")
-    
+
     # Initialize database schema first
     await init_db()
-    
+
     async with async_session_maker() as session:
         try:
             # Check if already seeded
@@ -121,7 +121,7 @@ async def seed_database():
             if result.first():
                 print("⚠️  Database already contains users - skipping seed")
                 return True
-            
+
             # 1. Seed genres
             print("\n🎭 Seeding genres...")
             for genre_data in TMDB_MOVIE_GENRES:
@@ -131,7 +131,7 @@ async def seed_database():
                     name=genre_data["name"]
                 )
                 session.add(genre)
-            
+
             for genre_data in TMDB_TV_GENRES:
                 genre = Genre(
                     id=genre_data["id"],
@@ -139,10 +139,10 @@ async def seed_database():
                     name=genre_data["name"]
                 )
                 session.add(genre)
-            
+
             await session.commit()
             print(f"   ✓ {len(TMDB_MOVIE_GENRES)} movie + {len(TMDB_TV_GENRES)} TV genres")
-            
+
             # 2. Seed users
             print("\n👥 Seeding users...")
             users = []
@@ -155,12 +155,12 @@ async def seed_database():
                 )
                 session.add(user)
                 users.append(user)
-            
+
             await session.commit()
             for user in users:
                 await session.refresh(user)
             print(f"   ✓ {len(users)} users")
-            
+
             # 3. Seed movie with genre_ids (JSON field)
             print("\n🎬 Seeding movie...")
             movie = Media(
@@ -179,7 +179,7 @@ async def seed_database():
             await session.commit()
             await session.refresh(movie)
             print("   ✓ Movie with genres (JSON)")
-            
+
             # 4. Seed TV show with genre_ids (JSON field)
             print("\n📺 Seeding TV show...")
             tv = Media(
@@ -199,7 +199,7 @@ async def seed_database():
             await session.commit()
             await session.refresh(tv)
             print("   ✓ TV show with genres (JSON)")
-            
+
             # 5. User media entry
             print("\n📚 Creating user entries...")
             entry = UserMediaEntry(
@@ -211,7 +211,7 @@ async def seed_database():
             session.add(entry)
             await session.commit()
             print("   ✓ 1 user entry")
-            
+
             # 6. Review
             print("\n⭐ Creating review...")
             review = Review(
@@ -224,7 +224,7 @@ async def seed_database():
             await session.commit()
             await session.refresh(review)
             print("   ✓ 1 review")
-            
+
             # 7. Review report
             print("\n🚨 Creating review report...")
             report = ReviewReport(
@@ -236,7 +236,7 @@ async def seed_database():
             session.add(report)
             await session.commit()
             print("   ✓ 1 review report")
-            
+
             # 8. Friendship
             print("\n👥 Creating friendship...")
             friendship = Friendship(
@@ -253,7 +253,7 @@ async def seed_database():
             session.add(friendship2)
             await session.commit()
             print("   ✓ 1 friendship")
-            
+
             # 9. Challenge
             print("\n🏆 Creating challenge...")
             challenge = Challenge(
@@ -268,7 +268,7 @@ async def seed_database():
             session.add(challenge)
             await session.commit()
             await session.refresh(challenge)
-            
+
             membership = ChallengeMembership(
                 user_id=users[1].id,
                 challenge_id=challenge.id,
@@ -279,7 +279,7 @@ async def seed_database():
             session.add(membership)
             await session.commit()
             print("   ✓ 1 challenge")
-            
+
             # 10. Activity
             print("\n📊 Creating activities...")
             activity1 = Activity(
@@ -288,17 +288,17 @@ async def seed_database():
                 details={"media_id": str(movie.id), "title": "Fight Club"}
             )
             session.add(activity1)
-            
+
             activity2 = Activity(
                 user_id=users[1].id,
                 activity_type=ActivityType.REVIEW_POSTED,
                 details={"media_id": str(movie.id), "rating": 5}
             )
             session.add(activity2)
-            
+
             await session.commit()
             print("   ✓ 2 activities")
-            
+
             print("\n✅ Seed complete!")
             print("\n📋 Summary:")
             print(f"   • Genres: {len(TMDB_MOVIE_GENRES) + len(TMDB_TV_GENRES)}")
@@ -314,9 +314,9 @@ async def seed_database():
             print("   admin@omnilog.com / Admin123!")
             print("   john@example.com / User123!")
             print("\n🌍 Locale: fr-BE")
-            
+
             return True
-            
+
         except Exception as e:
             await session.rollback()
             print(f"\n❌ Error: {e}")
@@ -327,18 +327,18 @@ async def seed_database():
 
 async def clear_database():
     """Clear all data (DEV/TEST ONLY)"""
-    
+
     if not is_safe_environment():
         print("❌ ERROR: Not in dev/test environment")
         return False
-    
+
     print("⚠️  WARNING: This will delete ALL data!")
     confirm = input("Type 'DELETE ALL' to confirm: ")
-    
+
     if confirm != "DELETE ALL":
         print("❌ Cancelled")
         return False
-    
+
     try:
         print("🗑️  Dropping all tables...")
         async with engine.begin() as conn:
@@ -352,7 +352,7 @@ async def clear_database():
 
 if __name__ == "__main__":
     import sys
-    
+
     if len(sys.argv) > 1 and sys.argv[1] == "clear":
         asyncio.run(clear_database())
     else:

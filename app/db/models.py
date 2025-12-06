@@ -35,6 +35,13 @@ class ChallengeType(str, Enum):
     PRIVATE = "private"
 
 
+class ChallengeStatus(str, Enum):
+    TOUS = "tous"
+    A_VENIR = "a_venir"
+    EN_COURS = "en_cours"
+    TERMINE = "termine"
+
+
 class ActivityType(str, Enum):
     MEDIA_ADDED = "media_added"
     MEDIA_COMPLETED = "media_completed"
@@ -42,12 +49,6 @@ class ActivityType(str, Enum):
     REVIEW_POSTED = "review_posted"
     FRIEND_ADDED = "friend_added"
     CHALLENGE_JOINED = "challenge_joined"
-
-class ChallengeStatus(str, Enum):
-    TOUS = "tous"
-    A_VENIR = "a_venir"
-    EN_COURS = "en_cours"
-    TERMINE = "termine"
 
 
 # Models

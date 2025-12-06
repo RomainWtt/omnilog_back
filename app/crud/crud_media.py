@@ -18,7 +18,7 @@ async def get_media_by_tmdb_id(
         tmdb_id: int,
         media_type: MediaType
 ) -> Optional[Media]:
-    """Get media by TMDB ID"""
+    """Get media by TMDB ID in the database"""
     result = await session.execute(
         select(Media).where(
             Media.tmdb_id == tmdb_id,

@@ -1,21 +1,30 @@
-from typing import Optional
-
-from fastapi import APIRouter, Depends, Query, HTTPException
+from typing import Optional, List
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user
-from app.db.models import User, ChallengeStatus
+from app.core.deps import get_current_user, get_current_active_user
+from app.db.models import User, ChallengeStatus, ChallengeType
 from app.db.session import get_session
-
 from app.schemas.challenge import ChallengeCreate, ChallengeRead
+from app.schemas.memberships import RankingMembership
+
 from app.crud.crud_challenge import (
     get_challenge_by_id,
-    list_last_five_challenges, add_new_challenge, search_challenges_details
+    add_new_challenge,
+    search_challenges_details,
+    get_challenges_by_type,
+    get_user_challenges,
+    join_challenge_by_ids,
+    get_challenge_progress,
+    calculate_ranking_challenge,
+    list_newest_challenges_with_details,
+    get_challenge_with_medias,
 )
 
 router = APIRouter()
+
 
 @router.post("/", response_model=ChallengeRead)
 async def create_challenge(
@@ -23,10 +32,26 @@ async def create_challenge(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
-    return await add_new_challenge(session, data, current_user.id)
+    return await add_new_challenge(session, data, current_user)
 
 
-@router.get("/search", response_model=list[ChallengeRead])
+@router.get("/type/{challenge_type}", response_model=List[ChallengeRead])
+async def get_challenges_by_type_route(
+    challenge_type: ChallengeType,
+    session: AsyncSession = Depends(get_session),
+):
+    return await get_challenges_by_type(session, challenge_type)
+
+
+@router.get("/my-challenges", response_model=List[ChallengeRead])
+async def get_challenges_personal(
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    return await get_user_challenges(session, current_user.id)
+
+
+@router.get("/search", response_model=List[ChallengeRead])
 async def search_challenges(
     query: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
@@ -56,15 +81,67 @@ async def search_challenges(
     )
 
 
+@router.get("/{challenge_id}/full")
+async def get_challenge_with_medias_details(
+    challenge_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: Optional[User] = Depends(get_current_active_user)
+):
+    personal_user_id = current_user.id if current_user else None
+    data = await get_challenge_with_medias(session, challenge_id, personal_user_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    return data
 
-@router.get("/latest/last5", response_model=list[ChallengeRead])
-async def get_newest_challenges(session: AsyncSession = Depends(get_session)):
-    return await list_last_five_challenges(session)
 
 
-@router.get("/{challenge_id}", response_model=ChallengeRead)
-async def get_challenge( challenge_id: UUID, session: AsyncSession = Depends(get_session)):
-    return await get_challenge_by_id(session, challenge_id)
+@router.get("/admin/latest/full")
+async def get_newest_challenges(
+    session: AsyncSession = Depends(get_session),
+    limit: int = Query(5, ge=1, le=50),
+):
+    challenges = await list_newest_challenges_with_details(session, limit)
+    full_challenges = []
+
+    for challenge in challenges:
+        data = await get_challenge_with_medias(session, challenge.id)
+        if data:
+            # Remplace le challenge SQLModel par le Pydantic ChallengeRead déjà construit
+            data["challenge"] = challenge
+            full_challenges.append(data)
+
+    return full_challenges
 
 
+# ----------------------
+# Participation & progression
+# ----------------------
+@router.post("/join/{challenge_id}")
+async def join_challenge(
+    challenge_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    challenge = await get_challenge_by_id(session, challenge_id)
+    if not challenge:
+        raise HTTPException(status_code=404, detail="Challenge not found")
 
+    membership = await join_challenge_by_ids(session, current_user.id, challenge_id)
+    return {"success": True, "membership_id": getattr(membership, "user_id", None)}
+
+
+@router.get("/{challenge_id}/progress", response_model=ChallengeRead)
+async def challenge_progress(
+    challenge_id: UUID,
+    current_user: User = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    return await get_challenge_progress(session, challenge_id, current_user.id)
+
+
+@router.get("/{challenge_id}/ranking", response_model=List[RankingMembership])
+async def get_challenge_ranking(
+    challenge_id: UUID,
+    session: AsyncSession = Depends(get_session),
+):
+    return await calculate_ranking_challenge(session, challenge_id)
