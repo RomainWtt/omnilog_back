@@ -1,7 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import Activity, ActivityType, Friendship
+from app.db.models import Activity, ActivityType, Friendship, Challenge
 
-from uuid import UUID, uuid4
 
 
 async def add_accept_friend(

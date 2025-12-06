@@ -4,15 +4,33 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+class MembershipCreate(BaseModel):
+    username: str
+    avatar_url: Optional[str] = None
+    episode_number: int
+    total_episodes: int
+
+
 class MembershipRead(BaseModel):
+    id: UUID
+    challenge_id: UUID
+    username: str
+    avatar_url: str | None
+    is_admin: bool
+    progress: int = 0
+    rank: int | None = None
+    joined_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class RankingMembership(BaseModel):
     id: UUID
     username: str
     avatar_url: Optional[str] = None
-    is_admin: bool
-    progress: int
+    episode_number: int
+    total_episodes: int
     rank: Optional[int] = None
-    # completed_media : Optional[int] = None
-    joined_at: datetime
 
     class Config:
         from_attributes = True
