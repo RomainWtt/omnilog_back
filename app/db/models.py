@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Optional
 from uuid import UUID, uuid4
 
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel, Column, JSON
 
 
@@ -156,6 +157,11 @@ class Media(SQLModel, table=True):
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    translations: dict = Field(
+        default_factory=dict,
+        sa_column=Column(JSON().with_variant(JSONB, "postgresql"))
+    )
 
     user_entries: list["UserMediaEntry"] = Relationship(back_populates="media")
     reviews: list["Review"] = Relationship(back_populates="media")

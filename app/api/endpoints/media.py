@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_optional_current_user
+from app.core.deps import get_optional_current_user, get_current_user
 from app.crud import crud_media, crud_genre
 from app.db.models import MediaType, User, ListStatus, Media, UserMediaEntry
 from app.db.session import get_session
@@ -22,6 +22,9 @@ from app.services.redis_service import redis_service
 from datetime import datetime
 import asyncio
 from app.services.tmdb_service import tmdb_service
+from fastapi import BackgroundTasks
+import asyncio
+from asyncio import Semaphore
 
 router = APIRouter()
 
@@ -428,11 +431,12 @@ async def discover_media(
 @router.get("/{media_id}", response_model=MediaRead)
 async def get_media_details(
         media_id: UUID,
+        language: str = Query("fr", description="Language code (fr, en, de, nl)"),  # ✨ NOUVEAU
         session: AsyncSession = Depends(get_session),
-        current_user: Optional[User] = Depends(get_optional_current_user),  # Ajouté
+        current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
-    Get detailed information about a specific media item
+    Get detailed information about a specific media item in the requested language
     """
     media = await crud_media.get_media_by_id(session, media_id)
 
@@ -441,6 +445,10 @@ async def get_media_details(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Media not found"
         )
+
+    # Vérifier si les traductions existent, sinon les récupérer
+    if not media.translations or not media.translations.get("title"):
+        media = await crud_media.update_media_translations(session, media_id)
 
     genres = await crud_genre.get_genres_by_ids(
         session,
@@ -493,7 +501,13 @@ async def get_media_details(
             print(f"Error fetching TMDB details for {media_id}: {str(e)}")
             pass
 
+    # APPLIQUER LA TRADUCTION
+    translated_title = crud_media.get_translated_field(media, "title", language)
+    translated_overview = crud_media.get_translated_field(media, "overview", language)
+
     media_dict = media.model_dump()
+    media_dict["title"] = translated_title
+    media_dict["overview"] = translated_overview
     media_dict["genres"] = [GenreRead.model_validate(g) for g in genres]
 
     media_read = MediaRead.model_validate(media_dict)
@@ -517,16 +531,18 @@ async def get_media_details(
 async def get_media_by_tmdb_id(
         tmdb_id: int,
         media_type: MediaType = Query(..., description="Media type (movie or tv)"),
+        language: str = Query("fr", description="Language code (fr, en, de, nl)"),  # ✨ NOUVEAU
         session: AsyncSession = Depends(get_session),
         current_user: Optional[User] = Depends(get_optional_current_user)
 ):
     """
-    Get media by TMDB ID, fetch from TMDB if not in database
+    Get media by TMDB ID, fetch from TMDB if not in database.
+    Returns data in the requested language.
     """
     media = await crud_media.get_media_by_tmdb_id(session, tmdb_id, media_type)
 
     if not media:
-        # Fetch from TMDB and store
+        # Fetch from TMDB and store WITH translations
         try:
             if media_type == MediaType.MOVIE:
                 tmdb_data = await tmdb_service.get_movie_details(tmdb_id)
@@ -537,7 +553,6 @@ async def get_media_by_tmdb_id(
             release_date = None
             if release_date_str:
                 try:
-                    from datetime import datetime
                     release_date = datetime.strptime(release_date_str, "%Y-%m-%d").date()
                 except (ValueError, TypeError):
                     release_date = None
@@ -558,8 +573,7 @@ async def get_media_by_tmdb_id(
                     directors = [creator["name"] for creator in tmdb_data["created_by"]]
 
             media_data = {
-                "tmdb_id": tmdb_id,
-                "media_type": media_type,
+
                 "title": tmdb_data.get("title") or tmdb_data.get("name"),
                 "original_title": tmdb_data.get("original_title") or tmdb_data.get("original_name"),
                 "overview": tmdb_data.get("overview"),
@@ -580,7 +594,12 @@ async def get_media_by_tmdb_id(
                 "original_language": tmdb_data.get("original_language")
             }
 
-            media = await crud_media.create_media(session=session, **media_data)
+            media = await crud_media.create_media_with_translations(
+                session=session,
+                tmdb_id=tmdb_id,
+                media_type=media_type,
+                **media_data
+            )
 
         except HTTPException:
             raise
@@ -593,7 +612,15 @@ async def get_media_by_tmdb_id(
                 detail=f"Error fetching media: {str(e)}"
             )
 
-    media_read = MediaRead.model_validate(media, from_attributes=True)
+    translated_title = crud_media.get_translated_field(media, "title", language)
+    translated_overview = crud_media.get_translated_field(media, "overview", language)
+
+    # Créer le MediaRead avec les traductions
+    media_dict = media.model_dump()
+    media_dict["title"] = translated_title
+    media_dict["overview"] = translated_overview
+
+    media_read = MediaRead.model_validate(media_dict, from_attributes=True)
 
     # Enrichir avec statut library si user connecté
     if current_user and media.id:
@@ -711,8 +738,12 @@ async def get_top_tv(
         )
 
 
+from fastapi import BackgroundTasks
+
+
 @router.get("/top/all", response_model=MediaSearch)
 async def get_top_media(
+        background_tasks: BackgroundTasks,
         page: int = Query(1, ge=1, le=25),
         current_user: Optional[User] = Depends(get_optional_current_user),
         session: AsyncSession = Depends(get_session)
@@ -728,8 +759,10 @@ async def get_top_media(
         start_idx = (page - 1) * 20
         end_idx = start_idx + 20
 
+        current_page_items = cached_media[start_idx:end_idx]
+
         # Convert cached dict to MediaRead objects
-        media_objects = [_tmdb_to_media_read(item) for item in cached_media[start_idx:end_idx]]
+        media_objects = [_tmdb_to_media_read(item) for item in current_page_items]
 
         # Enrich with library status if user is authenticated
         if current_user:
@@ -738,6 +771,12 @@ async def get_top_media(
                 user_id=current_user.id,
                 media_list=media_objects
             )
+
+
+        background_tasks.add_task(
+            prefetch_translations_for_items,
+            current_page_items
+        )
 
         return MediaSearch(
             results=media_objects,
@@ -779,8 +818,10 @@ async def get_top_media(
         start_idx = (page - 1) * 20
         end_idx = start_idx + 20
 
+        current_page_items = all_media[start_idx:end_idx]
+
         # Convert to MediaRead objects
-        media_objects = [_tmdb_to_media_read(item) for item in all_media[start_idx:end_idx]]
+        media_objects = [_tmdb_to_media_read(item) for item in current_page_items]
 
         # Enrich with library status if user is authenticated
         if current_user:
@@ -789,6 +830,11 @@ async def get_top_media(
                 user_id=current_user.id,
                 media_list=media_objects
             )
+
+        background_tasks.add_task(
+            prefetch_translations_for_items,
+            current_page_items
+        )
 
         return MediaSearch(
             results=media_objects,
@@ -802,6 +848,52 @@ async def get_top_media(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching top media: {str(e)}"
         )
+
+
+async def prefetch_translations_for_items(media_items: list[dict]):
+    """
+    Précharge les traductions pour une liste de médias en arrière-plan.
+    Respecte la limite de 40 req/sec de TMDB.
+    """
+    semaphore = Semaphore(10)  # Max 10 requêtes simultanées
+
+    async def fetch_and_cache(item: dict):
+        async with semaphore:
+            tmdb_id = item.get("id")
+            media_type = item.get("media_type")
+
+            if not tmdb_id or not media_type:
+                return
+
+            # Vérifier si déjà en cache
+            cached = await redis_service.get_media_translations(tmdb_id, media_type)
+            if cached:
+                print(f"Est dans le cache {item.get('title')}")
+                return
+
+            try:
+                # Récupérer les traductions
+                translations = await tmdb_service.get_complete_translations(tmdb_id, media_type)
+
+                # Mettre en cache
+                await redis_service.set_media_translations(
+                    tmdb_id,
+                    media_type,
+                    translations,
+                    ttl=86400  # 24 heures
+                )
+
+                # Pause pour respecter le rate limit (40 req/sec = 25ms entre requêtes)
+                await asyncio.sleep(0.025)
+
+            except Exception as e:
+                print(f"⚠️ Failed to prefetch translations for {media_type} {tmdb_id}: {e}")
+
+    # Lancer toutes les tâches en parallèle avec gestion d'erreur
+    await asyncio.gather(
+        *[fetch_and_cache(item) for item in media_items],
+        return_exceptions=True
+    )
 
 
 async def _enrich_with_library_status(
@@ -887,6 +979,41 @@ def _tmdb_to_media_read(tmdb_data: dict) -> MediaRead:
         created_at=datetime.now(),
         updated_at=datetime.now()
     )
+
+
+@router.get("/media/{tmdb_id}/translations")
+async def get_media_translations(
+        tmdb_id: int,
+        media_type: str = Query(..., regex="^(movie|tv)$")
+):
+    """
+    Get translations for a specific media item.
+    Returns cached translations if available, otherwise fetches from TMDB.
+
+    Response format:
+    {
+        "title": {"fr": "Very Bad Trip", "en": "The Hangover", "de": "...", "nl": "..."},
+        "overview": {"fr": "...", "en": "...", "de": "...", "nl": "..."}
+    }
+    """
+    # Vérifier le cache d'abord
+    cached = await redis_service.get_media_translations(tmdb_id, media_type)
+    if cached:
+        return cached
+
+    # Sinon, récupérer depuis TMDB
+    try:
+        translations = await tmdb_service.get_complete_translations(tmdb_id, media_type)
+
+        # Mettre en cache
+        await redis_service.set_media_translations(tmdb_id, media_type, translations)
+
+        return translations
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching translations: {str(e)}"
+        )
 
 
 @router.get("/top/genre/{genre_id}", response_model=MediaSearch)
@@ -1124,3 +1251,29 @@ async def clear_media_cache():
     await redis_service.clear_top_tv()
     await redis_service.clear_top_media()
     return None
+
+
+# app/routes/media.py
+
+@router.post("/{media_id}/translations/refresh")
+async def refresh_media_translations(
+        media_id: UUID,
+        session: AsyncSession = Depends(get_session),
+):
+    """
+    Refresh translations for a specific media from TMDB.
+    Useful if translations were updated or incomplete.
+    """
+    media = await crud_media.update_media_translations(session, media_id)
+
+    if not media:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Media not found"
+        )
+
+    return {
+        "success": True,
+        "message": f"Translations refreshed for {media.title}",
+        "available_languages": list(media.translations.get("title", {}).keys())
+    }
