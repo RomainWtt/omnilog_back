@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
 
@@ -7,7 +6,6 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_active_user
-from app.crud.crud_challenge_stats import get_total_episodes_for_challenge
 from app.crud.crud_memberships import get_challenge_members, get_user_membership_by_challenge, create_membership_by_ids
 from app.db.models import ChallengeMembership, User, Challenge
 from app.db.session import get_session
@@ -27,9 +25,8 @@ async def list_challenge_members(
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
 
-    total_episodes = await get_total_episodes_for_challenge(session, challenge)
+    #total_episodes = await get_total_episodes_for_challenge(session, challenge)
 
-    # Assemblage brut
     members_data = [
         {
             "id": user.id,
@@ -53,9 +50,6 @@ async def list_challenge_members(
     ]
 
 
-# -----------------------------------------------------------------------------
-# COUNT MEMBERS
-# -----------------------------------------------------------------------------
 @router.get("/{challenge_id}/members/total")
 async def get_challenge_members_count(
     challenge_id: UUID,
@@ -103,7 +97,6 @@ async def check_user_is_member(
     return {"is_member": membership is not None}
 
 
-
 @router.post("/{challenge_id}/memberships", response_model=ChallengeMembership, status_code=status.HTTP_201_CREATED)
 async def create_membership(
     challenge_id: UUID,
@@ -119,7 +112,6 @@ async def create_membership(
     if membership:
         return membership
 
-    # Utiliser la fonction CRUD (pas l'endpoint)
     membership = await create_membership_by_ids(
         session=session,
         user_id=current_user.id,

@@ -46,7 +46,6 @@ async def create_membership_by_ids(
     user_id: UUID,
     challenge_id: UUID,
     is_admin: bool = False,
-    #progress=None,
     progress: int = 0
 ) -> ChallengeMembership:
 

@@ -1,23 +1,17 @@
-import json
 from datetime import datetime, timezone
 from typing import Optional, Tuple, List
 from uuid import UUID
 
-import redis
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql import cache_key
 from sqlmodel import select, and_, or_
 
 from app.api.endpoints.media import get_media_by_tmdb_id
 from app.crud import crud_media
-from app.crud.crud_challenge_stats import build_ranking, get_total_episodes_for_challenge  # <-- Import depuis le nouveau fichier
 from app.crud.crud_media import create_media
 from app.crud.crud_memberships import get_challenge_members, get_user_membership_by_challenge, create_membership_by_ids  # <-- Import direct, pas depuis endpoints
 from app.db.models import Challenge, ChallengeStatus, Media, ChallengeMembership, User, MediaType
 from app.schemas.challenge import ChallengeCreate, ChallengeRead
 from app.schemas.media import MediaRead
-from app.schemas.memberships import RankingMembership
 
 
 def _members_stats(members: List[Tuple[User, ChallengeMembership]]) -> Tuple[int, float]:
@@ -184,7 +178,7 @@ async def get_challenge_with_medias(
 
 async def get_user_challenges(session: AsyncSession, user_id: UUID) -> List[ChallengeRead]:
     """
-    Return list of ChallengeRead for all challenges that the user has joined.
+        Return list of ChallengeRead for all challenges that the user has joined.
     """
     stmt = (
         select(Challenge)
@@ -200,6 +194,7 @@ async def get_user_challenges(session: AsyncSession, user_id: UUID) -> List[Chal
         members = await get_challenge_members(session, challenge.id)
         out.append(to_challenge_read(challenge, members, personal_user_id=user_id))
     return out
+
 
 async def search_challenges_details(
     session: AsyncSession,
@@ -277,67 +272,6 @@ async def join_challenge_by_ids(session: AsyncSession, user_id: UUID, challenge_
     return membership
 
 
-
-
-async def calculate_ranking_challenge(session: AsyncSession, challenge_id: UUID) -> List[RankingMembership]:
-    """
-    Calculate and return a ranking for a challenge.
-    """
-    challenge = await session.get(Challenge, challenge_id)
-    if not challenge:
-        return []
-
-    result = await session.execute(
-        select(User, ChallengeMembership).join(ChallengeMembership, User.id == ChallengeMembership.user_id).where(
-            ChallengeMembership.challenge_id == challenge_id
-        )
-    )
-    members = result.all()  # list of (User, ChallengeMembership)
-    total_episodes = await get_total_episodes_for_challenge(session, challenge)
-    return build_ranking(members, total_episodes)
-
-
-async def get_challenge_progress(
-    session: AsyncSession,
-    challenge_id: UUID,
-    user_id: Optional[UUID] = None,
-) -> ChallengeRead:
-    challenge = await session.get(Challenge, challenge_id)
-    if not challenge:
-        raise HTTPException(status_code=404, detail="Challenge not found")
-
-    members = await get_challenge_members(session, challenge_id)
-    return to_challenge_read(challenge, members, personal_user_id=user_id)
-
-
-async def update_challenge_progress_on_media_completion(
-    session: AsyncSession, user_id: UUID, media_id: UUID
-):
-    stmt = (
-        select(ChallengeMembership)
-        .join(Challenge)
-        .where(
-            ChallengeMembership.user_id == user_id,
-            Challenge.media_list.contains([media_id])
-        )
-    )
-    result = await session.execute(stmt)
-    memberships = result.scalars().all()
-
-    for membership in memberships:
-        if membership.completed_media is None:
-            membership.completed_media = []
-        if media_id not in membership.completed_media:
-            membership.completed_media.append(media_id)
-
-        total_media = len(membership.challenge.media_list or [])
-        membership.progress = int(len(membership.completed_media) / total_media * 100) if total_media else 0
-        membership.updated_at = datetime.utcnow()
-        session.add(membership)
-
-    await session.commit()
-
-
 async def list_newest_challenges_with_details(
     session: AsyncSession,
     limit: int = 5,
@@ -353,3 +287,4 @@ async def list_newest_challenges_with_details(
         members = await get_challenge_members(session, challenge.id)
         full_challenges.append(to_challenge_read(challenge, members))
     return full_challenges
+
