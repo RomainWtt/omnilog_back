@@ -3,7 +3,7 @@ from uuid import UUID
 from datetime import datetime
 from sqlmodel import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import Media, MediaType, UserMediaEntry, ListStatus
+from app.db.models import Media, MediaType, UserMediaEntry, ListStatus, Review
 from app.services.tmdb_service import tmdb_service
 
 
@@ -188,11 +188,15 @@ async def get_top_rated_completed(
         offset: int = 0
 ) -> List[UserMediaEntry]:
     """Get user's completed media with score >= min_score"""
-    query = select(UserMediaEntry).where(
+    query = select(UserMediaEntry, Review).where(
+        # 1. Les critères de base
         UserMediaEntry.user_id == user_id,
         UserMediaEntry.list_status == ListStatus.COMPLETED,
-        UserMediaEntry.score >= min_score,
-    ).order_by(UserMediaEntry.score.desc(), UserMediaEntry.completed_at.desc())
+        Review.rating >= min_score,
+
+        UserMediaEntry.media_id == Review.media_id,
+        UserMediaEntry.user_id == Review.user_id
+    ).order_by(Review.rating.desc())
 
     query = query.limit(limit).offset(offset)
     result = await session.execute(query)
