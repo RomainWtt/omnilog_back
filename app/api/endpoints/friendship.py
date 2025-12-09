@@ -226,7 +226,7 @@ async def get_user_friends_list(
 
 @router.get(
     "/pending",
-    response_model=List[FriendProfileRead],  # Utiliser le schéma enrichi pour indiquer l'expéditeur
+    response_model=List[FriendProfileRead],
     summary="Récupère toutes les demandes d'amitié en attente (reçues)."
 )
 async def get_pending_friend_requests(
