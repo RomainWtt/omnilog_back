@@ -487,7 +487,6 @@ class TMDBService:
 
             return translations
 
-
     def _map_to_tmdb_language(self, lang_code: str) -> str:
         """Mappe ISO 639-1 vers ISO 3166-1."""
         return self.TMDB_LANGUAGE_MAP.get(lang_code, lang_code)  # Fallback sur le code 639-1 si non trouvé
@@ -562,7 +561,6 @@ class TMDBService:
             print(f"⚠️ Failed to fetch {lang_code} translation: {e}")
             return None
 
-
     async def _get_movie_details_with_language(
             self,
             tmdb_id: int,
@@ -594,6 +592,64 @@ class TMDBService:
             if response.status_code != 200:
                 return {}
             return response.json()
+
+    async def discover_movies(
+            self,
+            with_genres: Optional[str] = None,
+            primary_release_year_gte: Optional[int] = None,
+            primary_release_year_lte: Optional[int] = None,
+            vote_average_gte: Optional[float] = None,
+            sort_by: str = "popularity.desc",
+            page: int = 1
+    ) -> dict[str, Any]:
+        """Discover movies with filters (Wrapper for discover_media)"""
+        filters = {}
+
+        if with_genres:
+            filters["with_genres"] = with_genres
+        if primary_release_year_gte:
+            # discover_media s'attend à recevoir la date dans le format YYYY-MM-DD
+            # On va ajuster le filtre pour qu'il corresponde à la méthode discover_media existante
+            filters["primary_release_date.gte"] = f"{primary_release_year_gte}-01-01"
+        if primary_release_year_lte:
+            filters["primary_release_date.lte"] = f"{primary_release_year_lte}-12-31"
+        if vote_average_gte:
+            filters["vote_average.gte"] = vote_average_gte
+
+        return await self.discover_media(
+            media_type="movie",
+            page=page,
+            sort_by=sort_by,
+            **filters
+        )
+
+    async def discover_tv(
+            self,
+            with_genres: Optional[str] = None,
+            first_air_date_year_gte: Optional[int] = None,
+            first_air_date_year_lte: Optional[int] = None,
+            vote_average_gte: Optional[float] = None,
+            sort_by: str = "popularity.desc",
+            page: int = 1
+    ) -> dict[str, Any]:
+        """Discover TV shows with filters (Wrapper for discover_media)"""
+        filters = {}
+
+        if with_genres:
+            filters["with_genres"] = with_genres
+        if first_air_date_year_gte:
+            filters["first_air_date.gte"] = f"{first_air_date_year_gte}-01-01"
+        if first_air_date_year_lte:
+            filters["first_air_date.lte"] = f"{first_air_date_year_lte}-12-31"
+        if vote_average_gte:
+            filters["vote_average.gte"] = vote_average_gte
+
+        return await self.discover_media(
+            media_type="tv",
+            page=page,
+            sort_by=sort_by,
+            **filters
+        )
 
 
 tmdb_service = TMDBService()
