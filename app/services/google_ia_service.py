@@ -5,12 +5,14 @@ from app.core.config import settings
 from google.genai import Client
 from google.genai.types import GenerateContentConfig
 
-# Instruction système pour forcer le modèle à agir comme un modérateur strict
+# Instruction système pour forcer le modèle à agir comme un modérateur strict avec contexte
 SYSTEM_INSTRUCTION = (
-    "Vous êtes un modérateur de contenu extrêmement strict. "
-    "Votre seule tâche est de déterminer si un commentaire est offensant, haineux, "
-    "sexuellement explicite, illégal, ou harcelant. Répondez UNIQUEMENT par 'OUI' "
-    "si le commentaire est inapproprié, sinon répondez 'NON'."
+    "Votre tâche est de déterminer si un commentaire est offensant, haineux, "
+    "sexuellement explicite, illégal, ou harcelant. "
+    "IMPORTANT : Vous recevrez le synopsis du média commenté pour comprendre le contexte. "
+    "Un commentaire parlant du sujet du média (handicap, violence, etc.) de manière "
+    "descriptive ou critique constructive N'EST PAS offensant. "
+    "Répondez UNIQUEMENT par 'OUI' si le commentaire est inapproprié, sinon répondez 'NON'."
 )
 
 
@@ -43,10 +45,11 @@ class GoogleIAService:
                 print(f"⏳ Rate limiting: attente de {wait_time:.1f}s...")
                 time.sleep(wait_time)
 
-    def check_comment(self, comments: str) -> bool:
+    def check_comment(self, comments: str, synopsis: str) -> bool:
         """
-        Demande à Gemini de vérifier le commentaire reçu en paramètre.
+        Demande à Gemini de vérifier le commentaire reçu en paramètre avec le contexte du synopsis.
         :param comments: le commentaire à checker
+        :param synopsis: le synopsis du média pour donner du contexte
         :return: True si le commentaire est inadapté, sinon False
         """
         # Liste de mots-clés offensants pour une détection locale rapide (fallback)
@@ -67,8 +70,10 @@ class GoogleIAService:
                 print(f"🚨 Commentaire BLOQUÉ par détection locale (mot-clé: '{keyword}').")
                 return True
 
-        # 2. Si pas de détection locale, appeler l'API Gemini
-        CLASSIFICATION_PROMPT = comments
+        # 2. Si pas de détection locale, appeler l'API Gemini avec le contexte
+        CLASSIFICATION_PROMPT = f"""SYNOPSIS DU MÉDIA : {synopsis}
+        COMMENTAIRE À ANALYSER : {comments}
+        Analysez si ce commentaire est inapproprié en tenant compte du contexte du média."""
 
         try:
             # Respecter le rate limiting
