@@ -6,7 +6,7 @@ from typing import Optional, Dict, Any
 from fastapi import APIRouter, Query, HTTPException, Depends, status
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud.crud_review import search_reviews_by_query
@@ -21,7 +21,7 @@ from app.schemas.review import (
 from app.crud import crud_review
 from app.db.session import get_session
 from app.core.deps import get_current_user, get_optional_current_user
-from app.db.models import User, NotificationType
+from app.db.models import User, NotificationType, Review, Media
 from app.services.notification_service import notification_service
 
 router = APIRouter()
@@ -160,8 +160,10 @@ async def get_current_user_review_for_media(
 
 @router.get("/user/{user_id}", response_model=ReviewsPaginated)
 async def get_user_reviews(
-        user_id: UUID,
         page: int = Query(1, ge=1, description="Page number"),
+        rating: Optional[int] = Query(None, ge=1, le=5, description="Filter by rating"),
+        search: Optional[str] = Query(None, description="Search in review content"),
+        sort: str = Query("recent", description="Sort order"),
         session: AsyncSession = Depends(get_session),
         current_user: User = Depends(get_current_user)
 ):
@@ -171,20 +173,37 @@ async def get_user_reviews(
         session=session,
         user_id=current_user.id,
         limit=20,
-        offset=offset
+        offset=offset,
+        rating_filter=rating,
+        search_query=search,
+        sort_by=sort
     )
 
-    from sqlalchemy import func, select
-    from app.db.models import Review
-
-    result = await session.execute(
+    # Count total with same filters
+    count_stmt = (
         select(func.count())
         .select_from(Review)
         .where(Review.user_id == current_user.id, Review.is_visible == True)
     )
+
+    if rating is not None:
+        count_stmt = count_stmt.where(Review.rating == rating)
+
+    # AJOUTER LE JOIN POUR LA RECHERCHE
+    if search and search.strip():
+        search_pattern = f"%{search.strip()}%"
+        count_stmt = count_stmt.join(Media, Review.media_id == Media.id)
+        count_stmt = count_stmt.where(
+            or_(
+                Review.content.ilike(search_pattern),
+                Media.title.ilike(search_pattern),
+                Media.original_title.ilike(search_pattern)
+            )
+        )
+
+    result = await session.execute(count_stmt)
     total = result.scalar_one()
 
-    # Enrichir avec is_report et valider
     results = []
     for review in reviews:
         review_dict = review.model_dump()
