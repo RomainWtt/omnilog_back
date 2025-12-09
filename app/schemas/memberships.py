@@ -27,10 +27,11 @@ class RankingMembership(BaseModel):
     id: UUID
     username: str
     avatar_url: Optional[str] = None
-    episode_number: int
-    total_episodes: int
+    completed_count: int
+    total_media_count: int
     progress: int = 0
     rank: Optional[int] = None
 
     class Config:
         from_attributes = True
+

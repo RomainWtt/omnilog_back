@@ -1,16 +1,24 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Literal
 from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.db.models import ChallengeType, MediaType
+
+from app.db.models import ChallengeType, MediaType, ListStatus
 
 
 class ChallengeToMedia(BaseModel):
     tmdb_id: Optional[int] = None
     media_type: MediaType = None
 
+
+class ChallengeProgressUpdate(BaseModel):
+    media_id: UUID
+    status: Optional[ListStatus] = None
+    current_season: Optional[int] = None
+    current_episode: Optional[int] = None
+    time_code: Optional[int] = None
 
 class ChallengeBase(BaseModel):
     name: Optional[str] = None

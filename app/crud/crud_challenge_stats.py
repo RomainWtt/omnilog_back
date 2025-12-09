@@ -36,9 +36,16 @@ async def calculate_progress_for_media_weighted(session: AsyncSession, media: Me
     return progress_percentage
 
 
+import json
+from typing import List
+from uuid import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+
 async def calculate_ranking_challenge(session: AsyncSession, challenge_id: UUID) -> List[RankingMembership]:
     """
-    Calculate and return a ranking for a challenge based on completed media count.
+    Calculate and return a ranking for a challenge based on completed media count from JSON field.
     """
     challenge = await session.get(Challenge, challenge_id)
     if not challenge:
@@ -54,7 +61,71 @@ async def calculate_ranking_challenge(session: AsyncSession, challenge_id: UUID)
     # Nombre total de médias dans le challenge
     total_media_count = len(challenge.media_list) if challenge.media_list else 0
 
-    return build_ranking(members, total_media_count)
+    # Préparer les données pour le ranking
+    ranking_data = []
+    for user, membership in members:
+        completed_media = membership.completed_media or {}
+
+        # Si c'est une string, la parser
+        if isinstance(completed_media, str):
+            completed_media = json.loads(completed_media)
+
+        # Compter les médias avec status "completed"
+        completed_count = sum(
+            1 for media_data in completed_media.values()
+            if isinstance(media_data, dict) and media_data.get("status") == "completed"
+        )
+
+        # Calculer le nombre total d'épisodes à regarder dans le challenge
+        total_episodes = 0
+        watched_episodes = 0
+
+        for media_id, media_progress in completed_media.items():
+            if not isinstance(media_progress, dict):
+                continue
+
+            media_type = media_progress.get("media_type")
+
+            # Pour les séries, compter les épisodes
+            if media_type == "tv":
+                # Récupérer les infos de la série depuis challenge.media_list
+                # (tu devras adapter selon ta structure exacte)
+                current_season = media_progress.get("current_season", 0)
+                current_episode = media_progress.get("current_episode", 0)
+
+                # Ici, tu peux calculer le nombre total d'épisodes de la série
+                # Pour simplifier, on compte juste les épisodes regardés
+                watched_episodes += current_episode if current_season else 0
+
+        ranking_data.append({
+            "user": user,
+            "membership": membership,
+            "completed_count": completed_count,
+            "watched_episodes": watched_episodes
+        })
+
+    # Trier par nombre de médias complétés (décroissant), puis par épisodes regardés
+    ranking_data.sort(
+        key=lambda x: (x["completed_count"], x["watched_episodes"]),
+        reverse=True
+    )
+
+    # Construire la liste de RankingMembership avec les rangs
+    ranking_list = []
+    for rank, data in enumerate(ranking_data, start=1):
+        ranking_list.append(
+            RankingMembership(
+                id=data["user"].id,
+                username=data["user"].username,
+                avatar_url=data["user"].avatar_url,
+                completed_count=data["completed_count"],
+                total_media_count=total_media_count,
+                progress=data["membership"].progress,
+                rank=rank
+            )
+        )
+
+    return ranking_list
 
 
 async def load_challenge_context(session: AsyncSession, user: User, media: Media):
@@ -111,6 +182,7 @@ async def load_challenge_context(session: AsyncSession, user: User, media: Media
         "entry_map": entry_map,
     }
 
+
 async def calculate_progress_film(session: AsyncSession, media: Media, user: User):
     ctx = await load_challenge_context(session, user, media)
     if ctx is None:
@@ -161,10 +233,10 @@ async def calculate_progress_film(session: AsyncSession, media: Media, user: Use
 
 
 async def calculate_progress_serie(
-    session: AsyncSession,
-    media: Media,
-    serie_details: TVSeasonsSchema,
-    user: User
+        session: AsyncSession,
+        media: Media,
+        serie_details: TVSeasonsSchema,
+        user: User
 ):
     ctx = await load_challenge_context(session, user, media)
     if ctx is None:
@@ -222,7 +294,6 @@ async def calculate_progress_serie(
         await session.refresh(m)
 
     return progress_results
-
 
 
 def build_ranking(members: List[Tuple[User, ChallengeMembership]], total_media_count: int) -> List[RankingMembership]:
