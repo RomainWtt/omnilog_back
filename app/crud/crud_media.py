@@ -315,3 +315,13 @@ def get_translated_field(
         return media.overview or ""
 
     return ""
+
+
+async def filter_challenges_by_media(user_challenges: list, media: Media):
+    if not user_challenges:
+        return []
+
+    return [
+        c for c in user_challenges
+        if c.media_list and media.tmdb_id in c.media_list
+    ]

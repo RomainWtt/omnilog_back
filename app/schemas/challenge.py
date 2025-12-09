@@ -21,18 +21,13 @@ class ChallengeBase(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     media_list: Optional[list[ChallengeToMedia]] = None
-    #media_list: Optional[list[int]] = None
-
-
 
 class ChallengeCreate(ChallengeBase):
     name: str
     challenge_type: ChallengeType
 
-
 class ChallengeUpdate(ChallengeBase):
     pass
-
 
 class ChallengeRead(BaseModel):
     id: UUID
@@ -44,7 +39,6 @@ class ChallengeRead(BaseModel):
     start_date: Optional[datetime]
     end_date: Optional[datetime]
     media_list: Optional[list[int]]
-    #media_list: Optional[List[ChallengeToMedia]]
 
     creator_id: UUID
     created_at: datetime
@@ -52,7 +46,7 @@ class ChallengeRead(BaseModel):
     members_total: int = 0
 
     average_progress: Optional[float] = None
-    personal_progress: Optional[float] = None
+    personal_progress: Optional[float] = None # voir si on garde
 
     class Config:
         from_attributes = True

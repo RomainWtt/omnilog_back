@@ -10,15 +10,14 @@ class MembershipCreate(BaseModel):
     episode_number: int
     total_episodes: int
 
-
 class MembershipRead(BaseModel):
     id: UUID
     challenge_id: UUID
     username: str
     avatar_url: str | None
     is_admin: bool
-    progress: int = 0
-    rank: int | None = None
+    #progress: int = 0
+    #rank: int | None = None
     joined_at: datetime
 
     class Config:
@@ -30,6 +29,7 @@ class RankingMembership(BaseModel):
     avatar_url: Optional[str] = None
     episode_number: int
     total_episodes: int
+    progress: int = 0
     rank: Optional[int] = None
 
     class Config:

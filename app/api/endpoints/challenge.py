@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user, get_current_active_user
-from app.db.models import User, ChallengeStatus, ChallengeType
+from app.crud import crud_media, crud_challenge_stats
+from app.crud.crud_challenge_stats import calculate_ranking_challenge
+from app.db.models import User, ChallengeStatus, ChallengeType, Media, MediaType
 from app.db.session import get_session
 from app.schemas.challenge import ChallengeCreate, ChallengeRead
-from app.schemas.memberships import RankingMembership
 
 from app.crud.crud_challenge import (
     get_challenge_by_id,
@@ -17,11 +18,11 @@ from app.crud.crud_challenge import (
     get_challenges_by_type,
     get_user_challenges,
     join_challenge_by_ids,
-    get_challenge_progress,
-    calculate_ranking_challenge,
     list_newest_challenges_with_details,
     get_challenge_with_medias,
 )
+from app.schemas.memberships import RankingMembership
+from app.schemas.tv import TVSeasonsSchema
 
 router = APIRouter()
 
@@ -130,14 +131,6 @@ async def join_challenge(
     return {"success": True, "membership_id": getattr(membership, "user_id", None)}
 
 
-@router.get("/{challenge_id}/progress", response_model=ChallengeRead)
-async def challenge_progress(
-    challenge_id: UUID,
-    current_user: User = Depends(get_current_active_user),
-    session: AsyncSession = Depends(get_session),
-):
-    return await get_challenge_progress(session, challenge_id, current_user.id)
-
 
 @router.get("/{challenge_id}/ranking", response_model=List[RankingMembership])
 async def get_challenge_ranking(
@@ -145,3 +138,30 @@ async def get_challenge_ranking(
     session: AsyncSession = Depends(get_session),
 ):
     return await calculate_ranking_challenge(session, challenge_id)
+
+
+@router.post("/media/film/{tmdb_id}/complete", response_model=list[dict])
+async def update_progress_challenge_film(
+    tmdb_id: int,
+    current_user: User = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_session)
+):
+    media: Media = await crud_media.get_media_by_tmdb_id(session, tmdb_id, MediaType.MOVIE)
+    if not media:
+        return []
+
+    return await crud_challenge_stats.calculate_progress_film(session, media, current_user)
+
+
+@router.post("/media/serie/{tmdb_id}/complete", response_model=list[dict])
+async def update_progress_challenge_serie(
+    tmdb_id: int,
+    serie_details: TVSeasonsSchema,
+    current_user: User = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    media: Media = await crud_media.get_media_by_tmdb_id(session, tmdb_id, MediaType.TV)
+    if not media:
+        return []
+
+    return await crud_challenge_stats.calculate_progress_serie(session, media, serie_details, current_user)
