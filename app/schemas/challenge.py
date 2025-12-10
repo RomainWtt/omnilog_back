@@ -54,7 +54,7 @@ class ChallengeRead(BaseModel):
     members_total: int = 0
 
     average_progress: Optional[float] = None
-    personal_progress: Optional[float] = None # voir si on garde
+    personal_progress: Optional[float] = None
 
     class Config:
         from_attributes = True
