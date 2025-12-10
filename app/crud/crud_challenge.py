@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional, Tuple, List
 from uuid import UUID
 
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, and_, or_
 
@@ -253,7 +254,7 @@ async def update_challenge_avatar(
         return None
 
     challenge.avatar_url = avatar_url
-    challenge.updated_at = datetime.now(timezone.utc)
+    challenge.updated_at = func.now()
 
     session.add(challenge)
     await session.commit()
