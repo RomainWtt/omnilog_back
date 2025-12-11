@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
+import json
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select
@@ -8,19 +9,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.deps import get_current_user, get_current_active_user
-from app.crud import crud_media, crud_challenge_stats
+from app.crud import crud_media, crud_challenge_stats, crud_challenge
 from app.crud.crud_challenge_stats import calculate_ranking_challenge
 from app.db.models import User, ChallengeStatus, ChallengeType, Media, MediaType, ChallengeMembership
 from app.db.session import get_session
-from app.schemas.challenge import ChallengeCreate, ChallengeRead, ChallengeProgressUpdate
+from app.schemas.challenge import ChallengeCreate, ChallengeRead, ChallengeProgressUpdate, ChallengeUpdate
 
+from app.api.endpoints.media import get_media_by_tmdb_id
 from app.crud.crud_challenge import (
     get_challenge_by_id,
     add_new_challenge,
     search_challenges_details,
     get_challenges_by_type,
     get_user_challenges,
-    join_challenge_by_ids,
     list_newest_challenges_with_details,
     get_challenge_with_medias,
 )
@@ -32,12 +33,31 @@ router = APIRouter()
 
 @router.post("/", response_model=ChallengeRead)
 async def create_challenge(
-        data: ChallengeCreate,
-        session: AsyncSession = Depends(get_session),
-        current_user: User = Depends(get_current_user),
+    data: ChallengeCreate,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
-    return await add_new_challenge(session, data, current_user)
+    return await crud_challenge.add_new_challenge(session, data, current_user)
 
+@router.post("/{challenge_id}", response_model=ChallengeRead)
+async def get_challenge_by_id(
+    challenge_id: UUID,
+    session: AsyncSession = Depends(get_session)
+):
+    return await crud_challenge.get_challenge_by_id(session, challenge_id)
+
+
+@router.patch("/update/{challenge_id}", response_model=ChallengeRead)
+async def update_challenge(
+    challenge_id: UUID,
+    data: ChallengeUpdate,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Met à jour les informations d'un challenge tant qu'il n'a pas commencé.
+    """
+    return await crud_challenge.update_challenge(challenge_id, data, session, current_user)
 
 @router.get("/type/{challenge_type}", response_model=List[ChallengeRead])
 async def get_challenges_by_type_route(
@@ -92,11 +112,12 @@ async def get_challenge_with_medias_details(
         current_user: Optional[User] = Depends(get_current_active_user)
 ):
     personal_user_id = current_user.id if current_user else None
+
     data = await get_challenge_with_medias(session, challenge_id, personal_user_id)
     if not data:
         raise HTTPException(status_code=404, detail="Challenge not found")
 
-    # Ajouter la progression de l'utilisateur depuis le membership
+    # progression utilisateur
     if current_user:
         result = await session.execute(
             select(ChallengeMembership).where(
@@ -107,23 +128,31 @@ async def get_challenge_with_medias_details(
         membership = result.scalar_one_or_none()
 
         if membership and membership.completed_media:
-            # Parser le JSON si c'est une string
-            completed_media = membership.completed_media
-            if isinstance(completed_media, str):
-                completed_media = json.loads(completed_media)
+            completed = membership.completed_media
 
-            # Reformater pour le frontend (utiliser media.id comme clé)
-            data["user_progress"] = {}
+            # JSON string -> dict
+            if isinstance(completed, str):
+                completed = json.loads(completed)
+
+            if not isinstance(completed, dict):
+                completed = {}
+
+            user_progress = {}
+
+            # (clé = UUID du média en string)
             for media in data.get("medias", []):
                 media_id_str = str(media.id)
-                if media_id_str in completed_media:
-                    progress = completed_media[media_id_str]
-                    data["user_progress"][media_id_str] = {
-                        "status": progress.get("status"),
-                        "current_season": progress.get("current_season"),
-                        "current_episode": progress.get("current_episode"),
-                        "time_code": progress.get("time_code")
+
+                if media_id_str in completed:
+                    prog = completed[media_id_str]
+                    user_progress[media_id_str] = {
+                        "status": prog.get("status"),
+                        "current_season": prog.get("current_season"),
+                        "current_episode": prog.get("current_episode"),
+                        "time_code": prog.get("time_code")
                     }
+
+            data["user_progress"] = user_progress
 
     return data
 
@@ -155,11 +184,11 @@ async def join_challenge(
         session: AsyncSession = Depends(get_session),
         current_user: User = Depends(get_current_active_user),
 ):
-    challenge = await get_challenge_by_id(session, challenge_id)
+    challenge = await get_challenge_by_id(challenge_id, session)
     if not challenge:
-        raise HTTPException(status_code=404, detail="Challenge not found")
+        raise HTTPException(status_code=404, detail="Challenge introuvable")
 
-    membership = await join_challenge_by_ids(session, current_user.id, challenge_id)
+    membership = await crud_challenge.join_challenge_by_ids(session, current_user.id, challenge_id)
     return {"success": True, "membership_id": getattr(membership, "user_id", None)}
 
 
@@ -198,8 +227,6 @@ async def update_progress_challenge_serie(
     return await crud_challenge_stats.calculate_progress_serie(session, media, serie_details, current_user)
 
 
-from typing import Dict, Any
-import json
 
 
 @router.put("/{challenge_id}/progress")

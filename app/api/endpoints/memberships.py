@@ -6,6 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_active_user
+from app.crud import crud_memberships
 from app.crud.crud_memberships import get_challenge_members, get_user_membership_by_challenge, create_membership_by_ids
 from app.db.models import ChallengeMembership, User, Challenge
 from app.db.session import get_session
@@ -119,3 +120,16 @@ async def create_membership(
         is_admin=is_admin
     )
     return membership
+
+
+@router.delete("/{challenge_id}/leave")
+async def leave_challenge(
+    challenge_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    deleted = await crud_memberships.delete_membership_by_ids(session, current_user.id, challenge_id)
+    if not deleted:
+        raise HTTPException(404, "Vous n'êtes pas membre de ce challenge")
+
+    return {"detail": "Vous avez quitté le challenge"}

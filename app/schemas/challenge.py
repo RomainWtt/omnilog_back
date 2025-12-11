@@ -8,9 +8,9 @@ from pydantic import BaseModel
 from app.db.models import ChallengeType, MediaType, ListStatus
 
 
-class ChallengeToMedia(BaseModel):
-    tmdb_id: Optional[int] = None
-    media_type: MediaType = None
+#class ChallengeToMedia(BaseModel):
+#    tmdb_id: Optional[int] = None
+#    media_type: MediaType = None
 
 
 class ChallengeProgressUpdate(BaseModel):
@@ -28,7 +28,7 @@ class ChallengeBase(BaseModel):
 
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
-    media_list: Optional[list[ChallengeToMedia]] = None
+    media_list: list[dict] = []
 
 class ChallengeCreate(ChallengeBase):
     name: str
@@ -46,7 +46,7 @@ class ChallengeRead(BaseModel):
 
     start_date: Optional[datetime]
     end_date: Optional[datetime]
-    media_list: Optional[list[int]]
+    media_list: list[dict] = []
 
     creator_id: UUID
     created_at: datetime

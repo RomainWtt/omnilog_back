@@ -262,7 +262,8 @@ class Challenge(SQLModel, table=True):
 
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
-    media_list: Optional[list[int]] = Field(default=None, sa_column=Column(JSON))
+    #media_list: Optional[list[int]] = Field(default=None, sa_column=Column(JSON))
+    media_list: Optional[list[dict]] = Field(default_factory=list, sa_column=Column(JSON))
 
     creator_id: UUID = Field(foreign_key="users.id", index=True)
 
