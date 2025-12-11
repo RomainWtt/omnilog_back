@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
 from typing import Optional, Tuple, List
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from sqlalchemy import func
+from fastapi import HTTPException
+
+from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, and_, or_
 
@@ -11,7 +13,7 @@ from app.crud import crud_media
 from app.crud.crud_media import create_media
 from app.crud.crud_memberships import get_challenge_members, get_user_membership_by_challenge, create_membership_by_ids  # <-- Import direct, pas depuis endpoints
 from app.db.models import Challenge, ChallengeStatus, Media, ChallengeMembership, User, MediaType
-from app.schemas.challenge import ChallengeCreate, ChallengeRead
+from app.schemas.challenge import ChallengeCreate, ChallengeRead, ChallengeUpdate
 from app.schemas.media import MediaRead
 
 
@@ -30,14 +32,23 @@ def to_challenge_read(
     members: Optional[List[Tuple[User, ChallengeMembership]]] = None,
     personal_user_id: Optional[UUID] = None,
 ) -> ChallengeRead:
-    """Convert a Challenge SQLModel instance + optional members into a ChallengeRead schema."""
     members_total, average_progress = _members_stats(members or [])
-    personal_progress = None  # par défaut si non membre
+    personal_progress = None
     if personal_user_id and members:
         for u, m in members:
             if u.id == personal_user_id:
                 personal_progress = m.progress or 0
                 break
+
+    # Transformation media_list
+    media_list = []
+    if challenge.media_list:
+        for item in challenge.media_list:
+            # Si item est un int, on peut construire un dict par défaut
+            if isinstance(item, int):
+                media_list.append({"tmdb_id": item, "media_type": "movie"})
+            elif isinstance(item, dict):
+                media_list.append(item)
 
     return ChallengeRead(
         id=challenge.id,
@@ -48,7 +59,7 @@ def to_challenge_read(
         avatar_url=challenge.avatar_url,
         start_date=challenge.start_date,
         end_date=challenge.end_date,
-        media_list=challenge.media_list,
+        media_list=media_list,
         created_at=challenge.created_at,
         updated_at=challenge.updated_at,
         members_total=members_total,
@@ -57,41 +68,55 @@ def to_challenge_read(
     )
 
 
-async def add_new_challenge(session: AsyncSession, data: ChallengeCreate, current_user: User) -> ChallengeRead:
-    challenge = Challenge(**data.dict(exclude={"media_list"}), creator_id=current_user.id)
-    challenge.media_list = challenge.media_list or []
 
+async def add_new_challenge(
+    session: AsyncSession,
+    data: ChallengeCreate,
+    current_user: User
+) -> ChallengeRead:
+
+    challenge = Challenge(**data.dict(exclude={"media_list"}), creator_id=current_user.id)
     session.add(challenge)
     await session.commit()
     await session.refresh(challenge)
 
+    media_list = []
+
     for media_item in data.media_list or []:
+        tmdb_id = media_item["tmdb_id"]
+        media_type = media_item["media_type"]
+        if isinstance(media_type, str):
+            media_type = MediaType(media_type)
+
         media_obj = await get_media_by_tmdb_id(
             session=session,
-            tmdb_id=media_item.tmdb_id,
-            media_type=media_item.media_type,
+            tmdb_id=tmdb_id,
+            media_type=media_type,
             current_user=current_user
         )
 
         if not media_obj:
             media_obj = await create_media(
                 session=session,
-                tmdb_id=media_obj.tmdb_id,
-                media_type=media_obj.media_type,
-                title=media_obj.title or "Unknown Title",
-                original_title=media_obj.original_title,
-                overview=media_obj.overview,
-                poster_path=media_obj.poster_path,
-                backdrop_path=media_obj.backdrop_path,
-                release_date=media_obj.release_date,
+                tmdb_id=tmdb_id,
+                media_type=media_type,
+                title=media_item.get("title") or "Unknown Title",
+                original_title=media_item.get("original_title"),
+                overview=media_item.get("overview"),
+                poster_path=media_item.get("poster_path"),
+                backdrop_path=media_item.get("backdrop_path"),
+                release_date=media_item.get("release_date"),
                 current_user=current_user
             )
 
-        if media_obj.tmdb_id not in challenge.media_list:
-            # ⚡ Réassigner la liste pour forcer la détection du changement
-            challenge.media_list = challenge.media_list + [media_obj.tmdb_id]
+        media_list.append({"tmdb_id": tmdb_id, "media_type": media_type.value})
 
-    session.add(challenge)
+    await session.execute(
+        update(Challenge)
+        .where(Challenge.id == challenge.id)
+        .values(media_list=media_list)
+    )
+
     await session.commit()
     await session.refresh(challenge)
 
@@ -125,8 +150,6 @@ async def get_challenges_by_type(
         out.append(to_challenge_read(challenge, members))
     return out
 
-
-
 async def get_challenge_with_medias(
     session: AsyncSession,
     challenge_id: UUID,
@@ -140,34 +163,30 @@ async def get_challenge_with_medias(
     medias: List[MediaRead] = []
 
     if challenge.media_list:
-        for tmdb_id in challenge.media_list:
-            media_data: Optional[MediaRead] = None
+        for item in challenge.media_list:
+            tmdb_id = item.get("tmdb_id")
+            media_type = item.get("media_type")
 
-            # Vérifie la DB pour MOVIE et TV
-            for media_type in (MediaType.MOVIE, MediaType.TV):
-                media_obj = await crud_media.get_media_by_tmdb_id(
-                    session, tmdb_id, media_type
-                )
-                if media_obj:
-                    media_data = MediaRead.model_validate(media_obj)
-                    break
+            if tmdb_id is None:
+                continue
 
-            # Si absent en DB, fetch via TMDB
-            if not media_data:
-                for media_type in (MediaType.MOVIE, MediaType.TV):
-                    try:
-                        media_data = await crud_media.get_media_by_tmdb_id(
-                            tmdb_id, media_type, fetch_tmdb_if_missing=True
-                        )
-                        if media_data:
-                            break
-                    except Exception as e:
-                        print(f"TMDB fetch failed for {tmdb_id} ({media_type}): {e}")
+            # conversion string -> enum
+            try:
+                media_type_enum = MediaType(media_type)
+            except Exception:
+                media_type_enum = MediaType.MOVIE
 
-            if media_data:
-                medias.append(media_data)
+            # lookup DB
+            media_obj = await crud_media.get_media_by_tmdb_id(
+                session=session,
+                tmdb_id=tmdb_id,
+                media_type=media_type_enum
+            )
+
+            if media_obj:
+                medias.append(MediaRead.model_validate(media_obj))
             else:
-                print(f"Media {tmdb_id} not found in DB or TMDB")
+                print(f"[WARN] Media not found for tmdb_id={tmdb_id}, type={media_type}")
 
     members = await get_challenge_members(session, challenge.id)
 
@@ -255,6 +274,33 @@ async def update_challenge_avatar(
 
     challenge.avatar_url = avatar_url
     challenge.updated_at = func.now()
+
+    session.add(challenge)
+    await session.commit()
+    await session.refresh(challenge)
+
+    members = await get_challenge_members(session, challenge.id)
+    return to_challenge_read(challenge, members)
+
+
+
+async def update_challenge(
+    challenge_id: UUID,
+    data: ChallengeUpdate,
+    session: AsyncSession,
+    current_user: User
+) -> ChallengeRead:
+    challenge = await get_challenge_by_id(session, challenge_id)
+
+    if challenge.creator_id != current_user.id:
+        raise HTTPException(403, "Seul le créateur peut modifier ce challenge")
+
+    if challenge.start_date and challenge.start_date <= datetime.utcnow():
+        raise HTTPException(400, "Impossible de modifier un challenge déjà commencé")
+
+
+    for field, value in data.dict(exclude_unset=True).items():
+        setattr(challenge, field, value)
 
     session.add(challenge)
     await session.commit()
