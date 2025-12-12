@@ -239,6 +239,26 @@ async def get_user_friends_list(
 
 
 @router.get(
+    "/status/{user_id}",
+    response_model=Optional[FriendshipReadSimple],
+    summary="Vérifie le statut d'amitié avec un utilisateur."
+)
+async def check_friendship_status(
+        user_id: uuid.UUID,
+        current_user: UserRead = Depends(get_current_active_user),
+        session: AsyncSession = Depends(get_session),
+):
+    """
+    Retourne le statut d'amitié entre l'utilisateur courant et l'utilisateur cible.
+    Retourne null si aucune relation n'existe.
+    """
+    friendship = await crud_friendship.get_friendship(
+        session, current_user.id, user_id
+    )
+
+    return friendship
+
+@router.get(
     "/pending",
     response_model=List[FriendProfileRead],
     summary="Récupère toutes les demandes d'amitié en attente (reçues)."
