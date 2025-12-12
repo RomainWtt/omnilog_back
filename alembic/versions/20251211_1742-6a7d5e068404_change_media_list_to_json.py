@@ -25,7 +25,7 @@ def upgrade() -> None:
         "challenges",
         "media_list",
         type_=sa.JSON(),
-        postgresql_using="to_json(media_list)"  # ✅ cast propre int[] -> json
+        postgresql_using="to_json(media_list)"
     )
 
 def downgrade() -> None:

@@ -54,6 +54,7 @@ class NotificationService:
             # En cas d'erreur, on envoie la notification par sécurité
             return True
 
+
     @staticmethod
     async def send_notification(
             session: AsyncSession,

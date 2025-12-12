@@ -42,6 +42,7 @@ async def get_user_membership_by_challenge(
     )
     return result.scalar_one_or_none()
 
+
 async def create_membership_by_ids(
     session: AsyncSession,
     user_id: UUID,
@@ -74,6 +75,8 @@ async def delete_membership_by_ids(
     Supprime le membership d'un utilisateur dans un challenge.
     Retourne True si le membership existait et a été supprimé.
     """
+    from app.crud import crud_challenge
+
     challenge = await crud_challenge.get_challenge_by_id(session, challenge_id)
     if challenge is None:
         return False

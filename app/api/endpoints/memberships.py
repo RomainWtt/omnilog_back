@@ -6,11 +6,12 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_active_user
-from app.crud import crud_memberships
+from app.crud import crud_memberships, crud_challenge, crud_activity
 from app.crud.crud_memberships import get_challenge_members, get_user_membership_by_challenge, create_membership_by_ids
-from app.db.models import ChallengeMembership, User, Challenge
+from app.db.models import ChallengeMembership, User, Challenge, Activity, ActivityType
 from app.db.session import get_session
 from app.schemas.memberships import MembershipRead, RankingMembership
+from app.schemas.user import UserRead
 
 router = APIRouter()
 
@@ -25,8 +26,6 @@ async def list_challenge_members(
     challenge = await session.get(Challenge, challenge_id)
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
-
-    #total_episodes = await get_total_episodes_for_challenge(session, challenge)
 
     members_data = [
         {
@@ -97,30 +96,67 @@ async def check_user_is_member(
     membership = await get_user_membership_by_challenge(session, current_user.id, challenge_id)
     return {"is_member": membership is not None}
 
-
-@router.post("/{challenge_id}/memberships", response_model=ChallengeMembership, status_code=status.HTTP_201_CREATED)
+"""
+@router.post(
+    "/{challenge_id}/memberships",
+    response_model=ChallengeMembership,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_membership(
     challenge_id: UUID,
     is_admin: bool = False,
     current_user: User = Depends(get_current_active_user),
     session: AsyncSession = Depends(get_session),
 ):
+    # 1) Vérifie que le challenge existe
     challenge = await session.get(Challenge, challenge_id)
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
 
-    membership = await get_user_membership_by_challenge(session, current_user.id, challenge_id)
+    # 2) Vérifie si l'utilisateur est déjà membre
+    membership = await get_user_membership_by_challenge(
+        session, current_user.id, challenge_id
+    )
     if membership:
         return membership
 
-    membership = await create_membership_by_ids(
-        session=session,
+    # 3) Crée le membership
+    membership = ChallengeMembership(
         user_id=current_user.id,
         challenge_id=challenge_id,
-        is_admin=is_admin
+        is_admin=is_admin,
     )
-    return membership
+    session.add(membership)
+    await session.flush()  # remplit joined_at / updated_at si default_factory
 
+    # 4) Crée l'activité join
+    activity = Activity(
+        user_id=current_user.id,
+        activity_type=ActivityType.CHALLENGE_JOINED,
+        details={
+            "challenge_id": str(challenge_id),
+            "joined_at": membership.joined_at.isoformat() if membership.joined_at else None,
+        },
+    )
+    session.add(activity)
+
+    try:
+        # Debug temporaire : voir ce qui va être inséré
+        print("NEW:", session.new)
+
+        await session.commit()
+        await session.refresh(membership)
+    except Exception as e:
+        await session.rollback()
+        # À remplacer par un logger
+        print("Erreur lors de la création du membership ou de l'activité :", e)
+        raise HTTPException(
+            status_code=500,
+            detail="Erreur lors de la création du membership",
+        )
+
+    return membership
+    """
 
 @router.delete("/{challenge_id}/leave")
 async def leave_challenge(
@@ -133,3 +169,33 @@ async def leave_challenge(
         raise HTTPException(404, "Vous n'êtes pas membre de ce challenge")
 
     return {"detail": "Vous avez quitté le challenge"}
+
+
+@router.post("/{challenge_id}/invite", response_model=None, status_code=status.HTTP_201_CREATED)
+async def invite_friend_to_challenge(
+    challenge_id: UUID,
+    friend_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_active_user)
+):
+    await crud_challenge.invite_friend_to_challenge(
+        session=session,
+        challenge_id=challenge_id,
+        inviter_id=current_user.id,
+        friend_id=friend_id
+    )
+    return {"detail": "Invitation envoyée"}
+
+
+@router.delete("/{challenge_id}/invite", status_code=status.HTTP_204_NO_CONTENT)
+async def refuse_invitation(
+    challenge_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_active_user)
+):
+    await crud_challenge.remove_invitation(
+        session=session,
+        challenge_id=challenge_id,
+        invitee_id=current_user.id
+    )
+    return
