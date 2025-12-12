@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.core.deps import get_current_active_user
+from app.core.deps import get_current_active_user, get_optional_current_user
 from app.crud import crud_media
 from app.db.models import Genre
 from app.db.models import ListStatus, NotificationType
@@ -33,44 +33,10 @@ from app.services.recommendation_service import recommendation_service
 
 router = APIRouter()
 
-
-@router.get("/", response_model=list[UserMediaEntryWithMedia])
-async def get_my_library(
-        status: Optional[ListStatus] = Query(None, description="Filter by list status"),
-        limit: int = Query(50, ge=1, le=100),
-        offset: int = Query(0, ge=0),
-        current_user: User = Depends(get_current_active_user),
-        session: AsyncSession = Depends(get_session)
-):
-    """
-    Get current user's media library
-    
-    Can filter by status: watching, completed, plan_to_watch, dropped, on_hold, favorite
-    """
-
-    entries = await crud_media.get_user_library(
-        session=session,
-        user_id=current_user.id,
-        status=status,
-        limit=limit,
-        offset=offset
-    )
-
-    result = []
-    for entry in entries:
-        media = await crud_media.get_media_by_id(session, entry.media_id)
-        if media:
-            entry_dict = UserMediaEntryRead.model_validate(entry).model_dump()
-            entry_dict["media"] = media
-            result.append(UserMediaEntryWithMedia(**entry_dict))
-
-    return result
-
-
 @router.get("/recommendations", response_model=List[MediaRead])
 async def get_recommendations(
         limit: int = Query(30, ge=1, le=50),
-        current_user: User = Depends(get_current_active_user),
+        current_user: User = Depends(get_optional_current_user),
         session: AsyncSession = Depends(get_session)
 ):
     """
@@ -88,6 +54,10 @@ async def get_recommendations(
     4. Exclude media already in library
     5. Sort by match score (desc) then TMDB rating (desc)
     """
+
+    if current_user is None:
+        return []
+
     return await recommendation_service.get_recommendations(
         session=session,
         user_id=current_user.id,

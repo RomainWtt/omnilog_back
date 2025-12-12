@@ -3,7 +3,7 @@ API routes for reviews/comments
 """
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, Query, HTTPException, Depends, status
+from fastapi import APIRouter, Query, HTTPException, Depends, status, Path
 from uuid import UUID
 
 from sqlalchemy import select, func, or_
@@ -158,21 +158,31 @@ async def get_current_user_review_for_media(
 # USER-RELATED ROUTES
 # ============================================
 
-@router.get("/user/{user_id}", response_model=ReviewsPaginated)
+@router.get("/user", response_model=ReviewsPaginated)
 async def get_user_reviews(
+        user_id: Optional[str] = Query(None,
+                                       description="ID de l'utilisateur (si non fourni, utilise l'utilisateur connecté)"),
         page: int = Query(1, ge=1, description="Page number"),
         rating: Optional[int] = Query(None, ge=1, le=5, description="Filter by rating"),
         search: Optional[str] = Query(None, description="Search in review content"),
         search_type: str = Query("all", description="Search type: all, content, or media"),
         sort: str = Query("recent", description="Sort order"),
         session: AsyncSession = Depends(get_session),
-        current_user: User = Depends(get_current_user)
+        current_user: User = Depends(get_optional_current_user)
 ):
+    # Détermine l'ID utilisateur cible
+    if user_id is not None:
+        target_user_id = user_id
+    else:
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        target_user_id = current_user.id
+
     offset = (page - 1) * 20
 
     reviews = await crud_review.get_user_reviews(
         session=session,
-        user_id=current_user.id,
+        user_id=target_user_id,
         limit=20,
         offset=offset,
         rating_filter=rating,
@@ -185,7 +195,7 @@ async def get_user_reviews(
     count_stmt = (
         select(func.count())
         .select_from(Review)
-        .where(Review.user_id == current_user.id, Review.is_visible == True)
+        .where(Review.user_id == target_user_id, Review.is_visible == True)
     )
 
     if rating is not None:

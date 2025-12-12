@@ -1,7 +1,7 @@
 # app/api/v1/friendships.py
 
 import uuid
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Query, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,7 @@ from app.schemas.friendship import FriendshipStatus, FriendshipUpdate, \
     FriendProfileRead, FriendshipReadSimple
 from app.schemas.user import UserRead
 from app.services.notification_service import notification_service
+
 router = APIRouter()
 
 
@@ -25,10 +26,10 @@ router = APIRouter()
     summary="Envoie une demande d'amitié (PENDING)."
 )
 async def send_friend_request(
-    user_two_id: str,
-    is_public: bool = False,
-    current_user: UserRead = Depends(get_current_active_user),
-    session: AsyncSession = Depends(get_session),
+        user_two_id: str,
+        is_public: bool = False,
+        current_user: UserRead = Depends(get_current_active_user),
+        session: AsyncSession = Depends(get_session),
 ):
     sender_id = current_user.id
     receiver_id = uuid.UUID(user_two_id)
@@ -97,10 +98,10 @@ async def send_friend_request(
     summary="Met à jour le statut d'une demande d'amitié (ACCEPT/DECLINE/BLOCK)."
 )
 async def update_friendship_status(
-    user_id: uuid.UUID,
-    new_status: FriendshipUpdate,
-    current_user: UserRead = Depends(get_current_active_user),
-    session: AsyncSession = Depends(get_session),
+        user_id: uuid.UUID,
+        new_status: FriendshipUpdate,
+        current_user: UserRead = Depends(get_current_active_user),
+        session: AsyncSession = Depends(get_session),
 ):
     current_user_id = current_user.id
 
@@ -181,25 +182,30 @@ async def update_friendship_status(
     return updated_friendship
 
 
-# --- GET /api/v1/friendships/?status=... ---
-
 @router.get(
     "/friends",
     response_model=List[FriendProfileRead],
-    summary="Récupère les relations de l'utilisateur authentifié, filtrées par statut."
+    summary="Récupère les relations d'un utilisateur, filtrées par statut."
 )
 async def get_user_friends_list(
         current_user: UserRead = Depends(get_current_active_user),
+        user_id: Optional[str] = Query(None,
+                                       description="ID de l'utilisateur (si non fourni, utilise l'utilisateur connecté)"),
         status: FriendshipStatus = Query(FriendshipStatus.ACCEPTED),
         page: int = Query(1, ge=1, description="Page number"),
         session: AsyncSession = Depends(get_session),
 ):
     PAGE_SIZE = 20
     offset = (page - 1) * PAGE_SIZE
-    user_id = current_user.id
+
+    # Utilise l'ID fourni ou celui de l'utilisateur connecté
+    if user_id is not None:
+        target_user_id = uuid.UUID(user_id)
+    else:
+        target_user_id = current_user.id
 
     friendships = await crud_friendship.get_user_relationships(
-        session, user_id,
+        session, target_user_id,
         status=status,
         limit=PAGE_SIZE,
         offset=offset
@@ -209,17 +215,25 @@ async def get_user_friends_list(
         return []
 
     friends_list = []
-    current_user_id = user_id
 
     for friendship in friendships:
-        if friendship.user_one.id == current_user_id:
+        if friendship.user_one.id == target_user_id:
             friend = friendship.user_two
-        elif friendship.user_two.id == current_user_id:
+        elif friendship.user_two.id == target_user_id:
             friend = friendship.user_one
         else:
             continue
+        pic_url = getattr(friend, 'profile_picture_url', None)
+        try:
+            friends_list.append(FriendProfileRead.model_validate(friend))
+            print(f"Validation réussie pour: {friend.username} (URL: {pic_url})")
 
-        friends_list.append(FriendProfileRead.model_validate(friend))
+        except Exception as e:
+            friends_list.append(FriendProfileRead(
+                id=friend.id,
+                username=friend.username,
+                avatar_url=friend.avatar_url
+            ))
 
     return friends_list
 
