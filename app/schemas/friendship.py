@@ -16,7 +16,7 @@ class FriendProfileRead(BaseModel):
     """
     id: UUID
     username: str
-    profile_picture_url: Optional[str] = None
+    avatar_url: Optional[str] = None
 
     class Config:
         from_attributes = True

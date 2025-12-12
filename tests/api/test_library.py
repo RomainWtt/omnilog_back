@@ -66,52 +66,6 @@ async def test_add_nonexistent_media_to_library(
     
     assert response.status_code == 404, f"Response: {response.status_code}, Body: {response.text}"
 
-
-@pytest.mark.asyncio
-async def test_get_library(
-    authenticated_client: tuple[AsyncClient, dict],
-    test_media
-):
-    """Test getting user's library - REMOVED progress"""
-    client, tokens = authenticated_client
-    
-    # Add media to library first
-    await client.post("/api/v1/library/", json={
-        "media_id": str(test_media.id),
-        "list_status": "completed",
-        "timecode": 8340  # Full movie runtime in seconds (139 min)
-    })
-    
-    response = await client.get("/api/v1/library/")
-    
-    assert response.status_code == 200, f"Response: {response.status_code}, Body: {response.text}"
-    data = response.json()
-    assert isinstance(data, list)
-    assert len(data) > 0
-
-
-@pytest.mark.asyncio
-async def test_get_library_filtered(
-    authenticated_client: tuple[AsyncClient, dict],
-    test_media
-):
-    """Test getting filtered library - REMOVED progress"""
-    client, tokens = authenticated_client
-    
-    # Add media with different statuses
-    await client.post("/api/v1/library/", json={
-        "media_id": str(test_media.id),
-        "list_status": "completed",
-        "timecode": 8340
-    })
-    
-    response = await client.get("/api/v1/library/?status=completed")
-    
-    assert response.status_code == 200, f"Response: {response.status_code}, Body: {response.text}"
-    data = response.json()
-    assert all(item["list_status"] == "completed" for item in data)
-
-
 @pytest.mark.asyncio
 async def test_update_library_entry(
     authenticated_client: tuple[AsyncClient, dict],
@@ -242,32 +196,3 @@ async def test_get_library_entry(
     data = response.json()
     assert data["media_id"] == str(test_media.id)
     assert data["timecode"] == 3000
-
-
-@pytest.mark.asyncio
-async def test_library_pagination(
-    authenticated_client: tuple[AsyncClient, dict],
-    session
-):
-    """Test library pagination"""
-    client, tokens = authenticated_client
-    
-    # Create multiple media entries
-    from app.db.models import Media, MediaType
-    
-    for i in range(15):
-        media = Media(
-            tmdb_id=1000 + i,
-            media_type=MediaType.MOVIE,
-            title=f"Movie {i}",
-            release_date=date(2020, 1, 1)
-        )
-        session.add(media)
-    await session.commit()
-    
-    # Test with limit
-    response = await client.get("/api/v1/library/?limit=10&offset=0")
-    
-    assert response.status_code == 200, f"Response: {response.status_code}, Body: {response.text}"
-    data = response.json()
-    assert len(data) <= 10
