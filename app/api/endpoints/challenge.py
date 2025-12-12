@@ -10,7 +10,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.deps import get_current_user, get_current_active_user
 from app.crud import crud_media, crud_challenge_stats, crud_challenge, crud_activity
-from app.crud.crud_challenge_stats import compute_media_progress
+from app.crud.crud_challenge_stats import compute_media_progress, calculate_ranking_challenge
 from app.db.models import User, ChallengeStatus, ChallengeType, Media, MediaType, ChallengeMembership, Notification
 from app.db.session import get_session
 from app.schemas.activity import ActivityChallenge
@@ -297,9 +297,20 @@ async def update_user_progress(
     }
 
 
+@router.get("/{challenge_id}/ranking", response_model=list[RankingMembership])
+async def calculate_ranking_challenge(
+    challenge_id: UUID,
+    session: AsyncSession = Depends(get_session)
+):
+    return await crud_challenge_stats.calculate_ranking_challenge(session, challenge_id)
+
+
+
 @router.get("/{challenge_id}/activities", response_model=List[ActivityChallenge])
 async def read_challenge_activities(
     challenge_id: UUID,
     session: AsyncSession = Depends(get_session)
 ):
     return await crud_activity.get_challenge_activities(session, challenge_id)
+
+

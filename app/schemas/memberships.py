@@ -16,8 +16,8 @@ class MembershipRead(BaseModel):
     username: str
     avatar_url: str | None
     is_admin: bool
-    #progress: int = 0
-    #rank: int | None = None
+    progress: int = 0
+    rank: int | None = None
     joined_at: datetime
 
     class Config:
