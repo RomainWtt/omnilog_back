@@ -10,7 +10,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.deps import get_current_user, get_current_active_user
 from app.crud import crud_media, crud_challenge_stats, crud_challenge, crud_activity
-from app.crud.crud_challenge_stats import calculate_ranking_challenge
+from app.crud.crud_challenge_stats import compute_media_progress
 from app.db.models import User, ChallengeStatus, ChallengeType, Media, MediaType, ChallengeMembership, Notification
 from app.db.session import get_session
 from app.schemas.activity import ActivityChallenge
@@ -194,13 +194,6 @@ async def join_challenge(
     return {"success": True, "membership_id": getattr(membership, "user_id", None)}
 
 
-@router.get("/{challenge_id}/ranking", response_model=List[RankingMembership])
-async def get_challenge_ranking(
-        challenge_id: UUID,
-        session: AsyncSession = Depends(get_session),
-):
-    return await calculate_ranking_challenge(session, challenge_id)
-
 
 @router.post("/media/film/{tmdb_id}/complete", response_model=list[dict])
 async def update_progress_challenge_film(
@@ -236,15 +229,12 @@ async def update_user_progress(
         session: AsyncSession = Depends(get_session),
         current_user: User = Depends(get_current_active_user),
 ):
-    """
-    Met à jour la progression d'un utilisateur pour un média spécifique dans un challenge.
-    """
-    # Vérifier que le challenge existe
-    challenge = await get_challenge_by_id(session = session, challenge_id=challenge_id)
+    # Vérifier challenge
+    challenge = await get_challenge_by_id(session=session, challenge_id=challenge_id)
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
 
-    # Vérifier que l'utilisateur est membre du challenge
+    # Vérifier membership
     result = await session.execute(
         select(ChallengeMembership).where(
             ChallengeMembership.user_id == current_user.id,
@@ -255,47 +245,42 @@ async def update_user_progress(
     if not membership:
         raise HTTPException(status_code=403, detail="Not a member of this challenge")
 
-    # Récupérer le média
+    # Récupérer média
     media = await crud_media.get_media_by_id(session, data.media_id)
     if not media:
         raise HTTPException(status_code=404, detail="Media not found")
 
-    # Récupérer ou initialiser le JSON completed_media
+    # Charger JSON
     completed_media = membership.completed_media or {}
     if isinstance(completed_media, str):
         completed_media = json.loads(completed_media)
 
     media_id_str = str(media.id)
 
-    if media.media_type == MediaType.TV:
-        completed_media[media_id_str] = {
-            "media_type": "tv",
-            "tmdb_id": media.tmdb_id,
-            "status": data.status or "watching",
-            "current_season": data.current_season,
-            "current_episode": data.current_episode,
-            "last_updated": datetime.utcnow().isoformat()
-        }
-    elif media.media_type == MediaType.MOVIE:
-        completed_media[media_id_str] = {
-            "media_type": "movie",
-            "tmdb_id": media.tmdb_id,
-            "status": data.status or "watching",
-            "time_code": data.time_code,
-            "last_updated": datetime.utcnow().isoformat()
-        }
+    media_result = await compute_media_progress(media, data)
+    progress_media = media_result["progress"]
 
-    # Re‑assigne le dict et marque le champ comme modifié
+    completed_media[media_id_str] = {
+        "media_type": "tv" if media.media_type == MediaType.TV else "movie",
+        "tmdb_id": media.tmdb_id,
+        **media_result,
+        "last_updated": datetime.utcnow().isoformat()
+    }
+
     membership.completed_media = completed_media
     flag_modified(membership, "completed_media")
 
-    # Recalcule la progression
     total_medias = len(challenge.media_list) if challenge.media_list else 0
-    completed_count = sum(
-        1 for m in completed_media.values()
-        if isinstance(m, dict) and m.get("status") == "completed"
-    )
-    global_progress = int((completed_count / total_medias) * 100) if total_medias > 0 else 0
+
+    if total_medias > 0:
+        progress_sum = sum(
+            m.get("progress", 0)
+            for m in completed_media.values()
+            if isinstance(m, dict)
+        )
+        global_progress = int(progress_sum / total_medias)
+    else:
+        global_progress = 0
 
     membership.progress = global_progress
     membership.updated_at = datetime.utcnow()
@@ -306,10 +291,9 @@ async def update_user_progress(
 
     return {
         "success": True,
-        "progress": global_progress,
-        "completed_count": completed_count,
-        "total_medias": total_medias,
-        "media_progress": completed_media[media_id_str]
+        "media_progress": progress_media,
+        "global_progress": global_progress,
+        "media_data": completed_media[media_id_str]
     }
 
 
