@@ -1,7 +1,7 @@
 # app/api/v1/friendships.py
 
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Any, Coroutine
 
 from fastapi import APIRouter, Query, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,11 +13,11 @@ from app.db.models import NotificationType
 from app.db.session import get_session
 from app.schemas.friendship import FriendshipStatus, FriendshipUpdate, \
     FriendProfileRead, FriendshipReadSimple
-from app.schemas.user import UserRead
+from app.schemas.user import UserRead, UserPublic
 from app.services.notification_service import notification_service
+from uuid import UUID
 
 router = APIRouter()
-
 
 @router.post(
     "/",
@@ -333,3 +333,17 @@ async def delete_friendship(
         )
 
     return
+
+
+@router.get("/{challenge_id}/inviteable-friends", response_model=List[FriendProfileRead],summary="Récupère les amis qui ne sont pas encore membres du challenge")
+async def get_inviteable_friends(
+    challenge_id: UUID,
+    current_user: UserRead = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+
+    return await crud_friendship.get_friends_not_in_challenge(
+        session=session,
+        current_user=current_user.id,
+        challenge_id=challenge_id
+    )

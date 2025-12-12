@@ -9,10 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.deps import get_current_user, get_current_active_user
-from app.crud import crud_media, crud_challenge_stats, crud_challenge
+from app.crud import crud_media, crud_challenge_stats, crud_challenge, crud_activity
 from app.crud.crud_challenge_stats import calculate_ranking_challenge
-from app.db.models import User, ChallengeStatus, ChallengeType, Media, MediaType, ChallengeMembership
+from app.db.models import User, ChallengeStatus, ChallengeType, Media, MediaType, ChallengeMembership, Notification
 from app.db.session import get_session
+from app.schemas.activity import ActivityChallenge
 from app.schemas.challenge import ChallengeCreate, ChallengeRead, ChallengeProgressUpdate, ChallengeUpdate
 
 from app.api.endpoints.media import get_media_by_tmdb_id
@@ -189,6 +190,7 @@ async def join_challenge(
         raise HTTPException(status_code=404, detail="Challenge introuvable")
 
     membership = await crud_challenge.join_challenge_by_ids(session, current_user.id, challenge_id)
+
     return {"success": True, "membership_id": getattr(membership, "user_id", None)}
 
 
@@ -227,8 +229,6 @@ async def update_progress_challenge_serie(
     return await crud_challenge_stats.calculate_progress_serie(session, media, serie_details, current_user)
 
 
-
-
 @router.put("/{challenge_id}/progress")
 async def update_user_progress(
         challenge_id: UUID,
@@ -240,7 +240,7 @@ async def update_user_progress(
     Met à jour la progression d'un utilisateur pour un média spécifique dans un challenge.
     """
     # Vérifier que le challenge existe
-    challenge = await get_challenge_by_id(session, challenge_id)
+    challenge = await get_challenge_by_id(session = session, challenge_id=challenge_id)
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
 
@@ -311,3 +311,11 @@ async def update_user_progress(
         "total_medias": total_medias,
         "media_progress": completed_media[media_id_str]
     }
+
+
+@router.get("/{challenge_id}/activities", response_model=List[ActivityChallenge])
+async def read_challenge_activities(
+    challenge_id: UUID,
+    session: AsyncSession = Depends(get_session)
+):
+    return await crud_activity.get_challenge_activities(session, challenge_id)
