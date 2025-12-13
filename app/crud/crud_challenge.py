@@ -270,7 +270,7 @@ async def update_challenge_avatar(
     avatar_url: Optional[str],
 ) -> Optional[ChallengeRead]:
     """Update challenge avatar URL and return updated ChallengeRead or None if not found."""
-    challenge = await get_challenge_by_id(session, challenge_id)
+    challenge = await get_challenge_by_id(session = session, challenge_id= challenge_id)
     if not challenge:
         return None
 
