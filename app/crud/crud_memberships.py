@@ -4,7 +4,6 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.crud import crud_challenge
 from app.db.models import User, ChallengeMembership
 
 

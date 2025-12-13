@@ -10,16 +10,14 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.deps import get_current_user, get_current_active_user
 from app.crud import crud_media, crud_challenge_stats, crud_challenge, crud_activity
-from app.crud.crud_challenge_stats import compute_media_progress, calculate_ranking_challenge
-from app.db.models import User, ChallengeStatus, ChallengeType, Media, MediaType, ChallengeMembership, Notification
+from app.db.models import User, ChallengeStatus, ChallengeType, MediaType, ChallengeMembership
 from app.db.session import get_session
 from app.schemas.activity import ActivityChallenge
 from app.schemas.challenge import ChallengeCreate, ChallengeRead, ChallengeProgressUpdate, ChallengeUpdate
 
-from app.api.endpoints.media import get_media_by_tmdb_id
+
 from app.crud.crud_challenge import (
     get_challenge_by_id,
-    add_new_challenge,
     search_challenges_details,
     get_challenges_by_type,
     get_user_challenges,
@@ -27,7 +25,6 @@ from app.crud.crud_challenge import (
     get_challenge_with_medias,
 )
 from app.schemas.memberships import RankingMembership
-from app.schemas.tv import TVSeasonsSchema
 
 router = APIRouter()
 
@@ -45,7 +42,7 @@ async def get_challenge_by_id(
     challenge_id: UUID,
     session: AsyncSession = Depends(get_session)
 ):
-    return await crud_challenge.get_challenge_by_id(session, challenge_id)
+    return await crud_challenge.get_challenge_by_id(session = session, challenge_id=challenge_id)
 
 
 @router.patch("/update/{challenge_id}", response_model=ChallengeRead)
@@ -194,47 +191,19 @@ async def join_challenge(
     return {"success": True, "membership_id": getattr(membership, "user_id", None)}
 
 
-
-@router.post("/media/film/{tmdb_id}/complete", response_model=list[dict])
-async def update_progress_challenge_film(
-        tmdb_id: int,
-        current_user: User = Depends(get_current_active_user),
-        session: AsyncSession = Depends(get_session)
-):
-    media: Media = await crud_media.get_media_by_tmdb_id(session, tmdb_id, MediaType.MOVIE)
-    if not media:
-        return []
-
-    return await crud_challenge_stats.calculate_progress_film(session, media, current_user)
-
-
-@router.post("/media/serie/{tmdb_id}/complete", response_model=list[dict])
-async def update_progress_challenge_serie(
-        tmdb_id: int,
-        serie_details: TVSeasonsSchema,
-        current_user: User = Depends(get_current_active_user),
-        session: AsyncSession = Depends(get_session),
-):
-    media: Media = await crud_media.get_media_by_tmdb_id(session, tmdb_id, MediaType.TV)
-    if not media:
-        return []
-
-    return await crud_challenge_stats.calculate_progress_serie(session, media, serie_details, current_user)
-
-
 @router.put("/{challenge_id}/progress")
-async def update_user_progress(
+async def update_user_progress_with_ranking(
         challenge_id: UUID,
         data: ChallengeProgressUpdate,
         session: AsyncSession = Depends(get_session),
-        current_user: User = Depends(get_current_active_user),
+        current_user = Depends(get_current_active_user)
 ):
     # Vérifier challenge
-    challenge = await get_challenge_by_id(session=session, challenge_id=challenge_id)
+    challenge = await crud_challenge.get_challenge_by_id(session=session, challenge_id=challenge_id)
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
 
-    # Vérifier membership
+    # Vérifier membre
     result = await session.execute(
         select(ChallengeMembership).where(
             ChallengeMembership.user_id == current_user.id,
@@ -245,55 +214,63 @@ async def update_user_progress(
     if not membership:
         raise HTTPException(status_code=403, detail="Not a member of this challenge")
 
-    # Récupérer média
-    media = await crud_media.get_media_by_id(session, data.media_id)
+    # Vérifier média
+    media = await crud_media.get_media_by_id(session=session, media_id=data.media_id)
     if not media:
         raise HTTPException(status_code=404, detail="Media not found")
 
-    # Charger JSON
+    # Récupérer ou initialiser completed_media
     completed_media = membership.completed_media or {}
     if isinstance(completed_media, str):
+        import json
         completed_media = json.loads(completed_media)
 
     media_id_str = str(media.id)
 
-    media_result = await compute_media_progress(media, data)
-    progress_media = media_result["progress"]
-
-    completed_media[media_id_str] = {
-        "media_type": "tv" if media.media_type == MediaType.TV else "movie",
-        "tmdb_id": media.tmdb_id,
-        **media_result,
-        "last_updated": datetime.utcnow().isoformat()
-    }
+    # Mettre à jour progression média
+    if media.media_type == MediaType.TV:
+        completed_media[media_id_str] = {
+            "media_type": "tv",
+            "tmdb_id": media.tmdb_id,
+            "status": data.status or "watching",
+            "current_season": data.current_season,
+            "current_episode": data.current_episode,
+            "last_updated": datetime.utcnow().isoformat()
+        }
+    elif media.media_type == MediaType.MOVIE:
+        completed_media[media_id_str] = {
+            "media_type": "movie",
+            "tmdb_id": media.tmdb_id,
+            "status": data.status or "watching",
+            "time_code": data.time_code,
+            "last_updated": datetime.utcnow().isoformat()
+        }
 
     membership.completed_media = completed_media
     flag_modified(membership, "completed_media")
 
+    # Recalculer la progression individuelle
     total_medias = len(challenge.media_list) if challenge.media_list else 0
-
-    if total_medias > 0:
-        progress_sum = sum(
-            m.get("progress", 0)
-            for m in completed_media.values()
-            if isinstance(m, dict)
-        )
-        global_progress = int(progress_sum / total_medias)
-    else:
-        global_progress = 0
-
-    membership.progress = global_progress
+    completed_count = sum(
+        1 for m in completed_media.values() if m.get("status") == "completed"
+    )
+    membership.progress = int((completed_count / total_medias) * 100) if total_medias > 0 else 0
     membership.updated_at = datetime.utcnow()
-
     session.add(membership)
     await session.commit()
     await session.refresh(membership)
 
+    # Recalculer le classement
+    from app.crud.crud_challenge_stats import calculate_ranking_challenge
+    ranking = await calculate_ranking_challenge(session, challenge_id)
+
     return {
         "success": True,
-        "media_progress": progress_media,
-        "global_progress": global_progress,
-        "media_data": completed_media[media_id_str]
+        "user_progress": membership.progress,
+        "completed_count": completed_count,
+        "total_medias": total_medias,
+        "media_progress": completed_media[media_id_str],
+        "ranking": ranking  # liste de RankingMembership
     }
 
 
@@ -305,12 +282,9 @@ async def calculate_ranking_challenge(
     return await crud_challenge_stats.calculate_ranking_challenge(session, challenge_id)
 
 
-
 @router.get("/{challenge_id}/activities", response_model=List[ActivityChallenge])
 async def read_challenge_activities(
     challenge_id: UUID,
     session: AsyncSession = Depends(get_session)
 ):
     return await crud_activity.get_challenge_activities(session, challenge_id)
-
-
