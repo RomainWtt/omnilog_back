@@ -10,7 +10,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.deps import get_current_user, get_current_active_user
 from app.crud import crud_media, crud_challenge_stats, crud_challenge, crud_activity
-from app.db.models import User, ChallengeStatus, ChallengeType, MediaType, ChallengeMembership
+from app.db.models import User, ChallengeStatus, ChallengeType, MediaType, ChallengeMembership, ActivityType
 from app.db.session import get_session
 from app.schemas.activity import ActivityChallenge
 from app.schemas.challenge import ChallengeCreate, ChallengeRead, ChallengeProgressUpdate, ChallengeUpdate
@@ -192,12 +192,15 @@ async def join_challenge(
 
 
 @router.put("/{challenge_id}/progress")
-async def update_user_progress_with_ranking(
+async def update_user_progress(
         challenge_id: UUID,
         data: ChallengeProgressUpdate,
         session: AsyncSession = Depends(get_session),
         current_user = Depends(get_current_active_user)
 ):
+    await crud_challenge_stats.update_progress(session = session, data = data, challenge_id= challenge_id, current_user=current_user )
+    """
+    
     # Vérifier challenge
     challenge = await crud_challenge.get_challenge_by_id(session=session, challenge_id=challenge_id)
     if not challenge:
@@ -260,6 +263,36 @@ async def update_user_progress_with_ranking(
     await session.commit()
     await session.refresh(membership)
 
+    # 4. Milestones (25%, 50%, 75%, 100%)
+    milestones = [25, 50, 75, 100]
+    for milestone in milestones:
+        if milestone <= membership.progress :
+            await crud_activity.add_challenge_activity(
+                session,
+                user_id=current_user.id,
+                challenge_id=challenge_id,
+                activity_type=ActivityType.CHALLENGE_MILESTONE,
+                timestamp=datetime.utcnow(),
+                details={
+                    "milestone": milestone,
+                    "completed_count": completed_count,
+                    "total_count": total_medias,
+                }
+            )
+
+    # 5. Challenge terminé
+    if membership.progress  == 100 :
+        await crud_activity.add_challenge_activity(
+            user_id=current_user.id,
+            challenge_id=challenge_id,
+            activity_type=ActivityType.CHALLENGE_FINISHED,
+            timestamp=datetime.utcnow(),
+            details={
+                "total_medias": total_medias,
+                "completion_date": datetime.utcnow().isoformat(),
+            }
+        )
+
     # Recalculer le classement
     from app.crud.crud_challenge_stats import calculate_ranking_challenge
     ranking = await calculate_ranking_challenge(session, challenge_id)
@@ -272,7 +305,7 @@ async def update_user_progress_with_ranking(
         "media_progress": completed_media[media_id_str],
         "ranking": ranking  # liste de RankingMembership
     }
-
+    """
 
 @router.get("/{challenge_id}/ranking", response_model=list[RankingMembership])
 async def calculate_ranking_challenge(

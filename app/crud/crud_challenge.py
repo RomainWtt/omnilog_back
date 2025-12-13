@@ -12,7 +12,7 @@ from app.api.endpoints.media import get_media_by_tmdb_id
 from app.crud import crud_media, crud_memberships, crud_friendship, crud_activity
 from app.crud.crud_media import create_media
 from app.db.models import Challenge, ChallengeStatus, Media, ChallengeMembership, User, MediaType, ChallengeType, \
-    Notification, NotificationType
+    Notification, NotificationType, ActivityType
 from app.schemas.challenge import ChallengeCreate, ChallengeRead, ChallengeUpdate
 from app.schemas.media import MediaRead
 
@@ -126,7 +126,6 @@ async def add_new_challenge(
         challenge_id=challenge.id,
         is_admin=True
     )
-    await crud_activity.add_join_challenge_activity(session, membership)
     return to_challenge_read(challenge, [(current_user, membership)])
 
 
@@ -317,7 +316,6 @@ async def join_challenge_by_ids(session: AsyncSession, user_id: UUID, challenge_
         return existing
 
     membership = await crud_memberships.create_membership_by_ids(session, user_id, challenge_id)
-    await crud_activity.add_join_challenge_activity(session, membership)
     return membership
 
 
