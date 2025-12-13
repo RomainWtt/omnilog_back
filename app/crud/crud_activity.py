@@ -24,22 +24,23 @@ async def add_accept_friend(
     return True
 
 
-
-async def add_join_challenge_activity(
+async def add_challenge_activity(
     session: AsyncSession,
-    membership: ChallengeMembership
+    *,
+    user_id: UUID,
+    challenge_id: UUID,
+    activity_type: ActivityType,
+    timestamp: datetime | None = None,
 ) -> Activity:
     activity = Activity(
-        user_id =membership.user_id,
-        activity_type=ActivityType.CHALLENGE_JOINED,
+        user_id=user_id,
+        activity_type=activity_type,
         details={
-            "challenge_id": str(membership.challenge_id),
-            "joined_at": membership.joined_at.isoformat() if membership.joined_at else None
-        }
+            "challenge_id": str(challenge_id),
+            "at": timestamp.isoformat() if timestamp else None,
+        },
     )
     session.add(activity)
-    await session.commit()
-    await session.refresh(activity)
     return activity
 
 

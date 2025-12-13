@@ -4,7 +4,8 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.db.models import User, ChallengeMembership
+from app.crud import crud_activity
+from app.db.models import User, ChallengeMembership, ActivityType
 
 
 async def get_challenge_members(
@@ -59,6 +60,8 @@ async def create_membership_by_ids(
         joined_at=now,
         updated_at=now
     )
+    await crud_activity.add_challenge_activity(session,user_id=membership.user_id,challenge_id=membership.challenge_id, activity_type=ActivityType.CHALLENGE_JOINED, timestamp=membership.joined_at)
+
     session.add(membership)
     await session.commit()
     await session.refresh(membership)
@@ -82,12 +85,19 @@ async def delete_membership_by_ids(
 
     now = datetime.utcnow()
     if challenge.start_date <= now:
-        raise ValueError("Challenge already started")
+        raise ValueError("Challenge a deja commencé")
 
     membership = await get_user_membership_by_challenge(session, user_id, challenge_id)
     if membership is None:
         return False
 
+    await crud_activity.add_challenge_activity(
+        session,
+        user_id=membership.user_id,
+        challenge_id=membership.challenge_id,
+        activity_type=ActivityType.CHALLENGE_LEFT,
+        timestamp=datetime.utcnow(),
+    )
     await session.delete(membership)
     await session.commit()
     return True

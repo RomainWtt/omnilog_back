@@ -10,7 +10,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.deps import get_current_user, get_current_active_user
 from app.crud import crud_media, crud_challenge_stats, crud_challenge, crud_activity
-from app.db.models import User, ChallengeStatus, ChallengeType, MediaType, ChallengeMembership
+from app.db.models import User, ChallengeStatus, ChallengeType, MediaType, ChallengeMembership, ActivityType
 from app.db.session import get_session
 from app.schemas.activity import ActivityChallenge
 from app.schemas.challenge import ChallengeCreate, ChallengeRead, ChallengeProgressUpdate, ChallengeUpdate
@@ -192,87 +192,13 @@ async def join_challenge(
 
 
 @router.put("/{challenge_id}/progress")
-async def update_user_progress_with_ranking(
+async def update_user_progress(
         challenge_id: UUID,
         data: ChallengeProgressUpdate,
         session: AsyncSession = Depends(get_session),
         current_user = Depends(get_current_active_user)
 ):
-    # Vérifier challenge
-    challenge = await crud_challenge.get_challenge_by_id(session=session, challenge_id=challenge_id)
-    if not challenge:
-        raise HTTPException(status_code=404, detail="Challenge not found")
-
-    # Vérifier membre
-    result = await session.execute(
-        select(ChallengeMembership).where(
-            ChallengeMembership.user_id == current_user.id,
-            ChallengeMembership.challenge_id == challenge_id
-        )
-    )
-    membership = result.scalar_one_or_none()
-    if not membership:
-        raise HTTPException(status_code=403, detail="Not a member of this challenge")
-
-    # Vérifier média
-    media = await crud_media.get_media_by_id(session=session, media_id=data.media_id)
-    if not media:
-        raise HTTPException(status_code=404, detail="Media not found")
-
-    # Récupérer ou initialiser completed_media
-    completed_media = membership.completed_media or {}
-    if isinstance(completed_media, str):
-        import json
-        completed_media = json.loads(completed_media)
-
-    media_id_str = str(media.id)
-
-    # Mettre à jour progression média
-    if media.media_type == MediaType.TV:
-        completed_media[media_id_str] = {
-            "media_type": "tv",
-            "tmdb_id": media.tmdb_id,
-            "status": data.status or "watching",
-            "current_season": data.current_season,
-            "current_episode": data.current_episode,
-            "last_updated": datetime.utcnow().isoformat()
-        }
-    elif media.media_type == MediaType.MOVIE:
-        completed_media[media_id_str] = {
-            "media_type": "movie",
-            "tmdb_id": media.tmdb_id,
-            "status": data.status or "watching",
-            "time_code": data.time_code,
-            "last_updated": datetime.utcnow().isoformat()
-        }
-
-    membership.completed_media = completed_media
-    flag_modified(membership, "completed_media")
-
-    # Recalculer la progression individuelle
-    total_medias = len(challenge.media_list) if challenge.media_list else 0
-    completed_count = sum(
-        1 for m in completed_media.values() if m.get("status") == "completed"
-    )
-    membership.progress = int((completed_count / total_medias) * 100) if total_medias > 0 else 0
-    membership.updated_at = datetime.utcnow()
-    session.add(membership)
-    await session.commit()
-    await session.refresh(membership)
-
-    # Recalculer le classement
-    from app.crud.crud_challenge_stats import calculate_ranking_challenge
-    ranking = await calculate_ranking_challenge(session, challenge_id)
-
-    return {
-        "success": True,
-        "user_progress": membership.progress,
-        "completed_count": completed_count,
-        "total_medias": total_medias,
-        "media_progress": completed_media[media_id_str],
-        "ranking": ranking  # liste de RankingMembership
-    }
-
+    await crud_challenge_stats.update_progress(session = session, data = data, challenge_id= challenge_id, current_user=current_user )
 
 @router.get("/{challenge_id}/ranking", response_model=list[RankingMembership])
 async def calculate_ranking_challenge(
