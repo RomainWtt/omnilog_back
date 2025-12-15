@@ -96,67 +96,6 @@ async def check_user_is_member(
     membership = await get_user_membership_by_challenge(session, current_user.id, challenge_id)
     return {"is_member": membership is not None}
 
-"""
-@router.post(
-    "/{challenge_id}/memberships",
-    response_model=ChallengeMembership,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_membership(
-    challenge_id: UUID,
-    is_admin: bool = False,
-    current_user: User = Depends(get_current_active_user),
-    session: AsyncSession = Depends(get_session),
-):
-    # 1) Vérifie que le challenge existe
-    challenge = await session.get(Challenge, challenge_id)
-    if not challenge:
-        raise HTTPException(status_code=404, detail="Challenge not found")
-
-    # 2) Vérifie si l'utilisateur est déjà membre
-    membership = await get_user_membership_by_challenge(
-        session, current_user.id, challenge_id
-    )
-    if membership:
-        return membership
-
-    # 3) Crée le membership
-    membership = ChallengeMembership(
-        user_id=current_user.id,
-        challenge_id=challenge_id,
-        is_admin=is_admin,
-    )
-    session.add(membership)
-    await session.flush()  # remplit joined_at / updated_at si default_factory
-
-    # 4) Crée l'activité join
-    activity = Activity(
-        user_id=current_user.id,
-        activity_type=ActivityType.CHALLENGE_JOINED,
-        details={
-            "challenge_id": str(challenge_id),
-            "joined_at": membership.joined_at.isoformat() if membership.joined_at else None,
-        },
-    )
-    session.add(activity)
-
-    try:
-        # Debug temporaire : voir ce qui va être inséré
-        print("NEW:", session.new)
-
-        await session.commit()
-        await session.refresh(membership)
-    except Exception as e:
-        await session.rollback()
-        # À remplacer par un logger
-        print("Erreur lors de la création du membership ou de l'activité :", e)
-        raise HTTPException(
-            status_code=500,
-            detail="Erreur lors de la création du membership",
-        )
-
-    return membership
-    """
 
 @router.delete("/{challenge_id}/leave")
 async def leave_challenge(

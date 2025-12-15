@@ -200,6 +200,7 @@ async def update_user_progress(
 ):
     await crud_challenge_stats.update_progress(session = session, data = data, challenge_id= challenge_id, current_user=current_user )
 
+
 @router.get("/{challenge_id}/ranking", response_model=list[RankingMembership])
 async def calculate_ranking_challenge(
     challenge_id: UUID,
