@@ -177,17 +177,11 @@ async def get_challenge_with_medias(
             except Exception:
                 media_type_enum = MediaType.MOVIE
 
-            # lookup DB
-            media_obj = await crud_media.get_media_by_tmdb_id(
-                session=session,
-                tmdb_id=tmdb_id,
-                media_type=media_type_enum
-            )
-
+            media_obj = await crud_media.get_media_by_tmdb_id(session=session,tmdb_id=tmdb_id, media_type=media_type_enum)
             if media_obj:
                 medias.append(MediaRead.model_validate(media_obj))
             else:
-                print(f"[WARN] Media not found for tmdb_id={tmdb_id}, type={media_type}")
+                raise HTTPException(status_code=404, detail="Media not found")
 
     members = await crud_memberships.get_challenge_members(session, challenge.id)
 

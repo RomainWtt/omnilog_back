@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.endpoints import auth, users, media, library, review, oauth, email_verification, notifications, challenge, \
-    memberships, genres, stats
+    memberships, genres, stats, activity
 from app.api.endpoints import friendship
 from app.api.endpoints import report
 from app.api.endpoints import avatar
@@ -27,3 +27,5 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 api_router.include_router(genres.router, prefix="/genres", tags=["genres"])
 api_router.include_router(google_ia.router, prefix="/google_ia", tags=["google_ia"])
 api_router.include_router(stats.router, prefix="/stats", tags=["stats"])
+api_router.include_router(activity.router, prefix="/activity", tags=["activity"])
+

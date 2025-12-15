@@ -50,7 +50,10 @@ async def create_membership_by_ids(
     is_admin: bool = False,
     progress: int = 0
 ) -> ChallengeMembership:
-
+    """
+        Créer la participation d'un utilisateur dans un challenge,
+        sont activité  d'inscription sera notifiée dans le challenge
+    """
     now = datetime.utcnow()
     membership = ChallengeMembership(
         user_id=user_id,
@@ -60,8 +63,9 @@ async def create_membership_by_ids(
         joined_at=now,
         updated_at=now
     )
-    await crud_activity.add_challenge_activity(session,user_id=membership.user_id,challenge_id=membership.challenge_id, activity_type=ActivityType.CHALLENGE_JOINED, timestamp=membership.joined_at)
-
+    await crud_activity.join_challenge_activity(session,
+                                               user_id=membership.user_id,
+                                               challenge_id=membership.challenge_id)
     session.add(membership)
     await session.commit()
     await session.refresh(membership)
@@ -91,12 +95,10 @@ async def delete_membership_by_ids(
     if membership is None:
         return False
 
-    await crud_activity.add_challenge_activity(
+    await crud_activity.leave_challenge_activity(
         session,
         user_id=membership.user_id,
-        challenge_id=membership.challenge_id,
-        activity_type=ActivityType.CHALLENGE_LEFT,
-        timestamp=datetime.utcnow(),
+        challenge_id=membership.challenge_id
     )
     await session.delete(membership)
     await session.commit()

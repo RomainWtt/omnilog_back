@@ -50,7 +50,7 @@ class ActivityType(str, Enum):
     FRIEND_ADDED = "friend_added"
     CHALLENGE_JOINED = "challenge_joined"
     CHALLENGE_COMPLETED_EPISODE = "challenge_completed_episode"
-    CHALLENGE_MILESTONE = "challenge_milestone"
+    CHALLENGE_MILESTONE = "challenge_milestone" # ? a voir si a garder
     CHALLENGE_LEFT = "challenge_left"
     CHALLENGE_FINISHED = "challenge_finished"
 
