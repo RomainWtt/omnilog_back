@@ -133,7 +133,7 @@ async def search_media(
         max_runtime: Optional[int] = Query(None, description="Maximum runtime in minutes (movies only)"),
         page: int = Query(1, ge=1, description="Page number"),
         session: AsyncSession = Depends(get_session),
-        current_user: Optional[User] = Depends(get_optional_current_user)  # Ajouté
+        current_user: Optional[User] = Depends(get_optional_current_user)
 ):
     """
     Search for movies and TV shows via TMDB with optional filters.
@@ -431,7 +431,7 @@ async def discover_media(
 @router.get("/{media_id}", response_model=MediaRead)
 async def get_media_details(
         media_id: UUID,
-        language: str = Query("fr", description="Language code (fr, en, de, nl)"),  # ✨ NOUVEAU
+        language: str = Query("fr", description="Language code (fr, en, de, nl)"),
         session: AsyncSession = Depends(get_session),
         current_user: Optional[User] = Depends(get_optional_current_user),
 ):
@@ -531,7 +531,8 @@ async def get_media_details(
 async def get_media_by_tmdb_id(
         tmdb_id: int,
         media_type: MediaType = Query(..., description="Media type (movie or tv)"),
-        language: str = Query("fr", description="Language code (fr, en, de, nl)"),  # ✨ NOUVEAU
+        language: str = Query("fr", description="Language code (fr, en, de, nl)"),
+        need_to_insert: bool = Query(True, description="Whether or not to insert this media"),
         session: AsyncSession = Depends(get_session),
         current_user: Optional[User] = Depends(get_optional_current_user)
 ):
@@ -542,6 +543,12 @@ async def get_media_by_tmdb_id(
     media = await crud_media.get_media_by_tmdb_id(session, tmdb_id, media_type)
 
     if not media:
+        if not need_to_insert:
+            # Si le média n'existe pas en base et qu'on n'a pas le droit d'insérer, on renvoie 404
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Media not found in local database, and insertion was prohibited."
+            )
         # Fetch from TMDB and store WITH translations
         try:
             if media_type == MediaType.MOVIE:
@@ -573,7 +580,6 @@ async def get_media_by_tmdb_id(
                     directors = [creator["name"] for creator in tmdb_data["created_by"]]
 
             media_data = {
-
                 "title": tmdb_data.get("title") or tmdb_data.get("name"),
                 "original_title": tmdb_data.get("original_title") or tmdb_data.get("original_name"),
                 "overview": tmdb_data.get("overview"),
