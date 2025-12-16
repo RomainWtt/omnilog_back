@@ -138,3 +138,30 @@ async def delete_old_notifications(
 
     await session.commit()
     return count
+
+
+async def get_user_notifications_by_type(
+    session: AsyncSession,
+    user_id: UUID,
+    notification_type: Optional[NotificationType] = None,
+    limit: int = 50,
+    offset: int = 0,
+    unread_only: bool = False
+) -> Sequence[Notification]:
+    """Récupère les notifications d'un utilisateur, éventuellement filtrées par type"""
+    query = (
+        select(Notification)
+        .where(Notification.user_id == user_id)
+        .options(selectinload(Notification.actor))
+        .order_by(Notification.created_at.desc())
+    )
+
+    if unread_only:
+        query = query.where(Notification.read == False)
+
+    if notification_type:
+        query = query.where(Notification.notification_type == notification_type)
+
+    query = query.limit(limit).offset(offset)
+    result = await session.execute(query)
+    return result.scalars().all()

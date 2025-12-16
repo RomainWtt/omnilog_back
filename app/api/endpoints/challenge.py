@@ -187,7 +187,6 @@ async def join_challenge(
         raise HTTPException(status_code=404, detail="Challenge introuvable")
 
     membership = await crud_challenge.join_challenge_by_ids(session, current_user.id, challenge_id)
-
     return {"success": True, "membership_id": getattr(membership, "user_id", None)}
 
 

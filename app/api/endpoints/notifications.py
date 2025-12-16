@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud import crud_notification
 from app.core.deps import get_current_active_user
-from app.db.models import User
+from app.db.models import User, Notification, NotificationType
 from app.db.session import get_session
 from app.schemas.notification import NotificationRead
 from app.schemas.notification_preferences import (
@@ -278,3 +278,27 @@ async def reset_notification_preferences(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Erreur lors de la réinitialisation des préférences"
         )
+
+
+
+@router.get(
+    "/challenge-invitation",
+    response_model=List[NotificationRead],
+    summary="Récupère les notifications de type 'challenge' de l'utilisateur"
+)
+async def get_challenge_notifications(
+    unread_only: bool = False,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: UserRead = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_session)
+):
+    notifications = await crud_notification.get_user_notifications_by_type(
+        session=session,
+        user_id=current_user.id,
+        notification_type=NotificationType.CHALLENGE,
+        unread_only=unread_only,
+        limit=limit,
+        offset=offset
+    )
+    return [NotificationRead.model_validate(n) for n in notifications]

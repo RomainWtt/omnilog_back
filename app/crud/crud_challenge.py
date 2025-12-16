@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, and_, or_
 
 from app.api.endpoints.media import get_media_by_tmdb_id
-from app.crud import crud_media, crud_memberships, crud_friendship, crud_activity
+from app.crud import crud_media, crud_memberships, crud_friendship, crud_activity, crud_notification
 from app.crud.crud_media import create_media
 from app.db.models import Challenge, ChallengeStatus, Media, ChallengeMembership, User, MediaType, ChallengeType, \
     Notification, NotificationType, ActivityType
@@ -343,21 +343,18 @@ async def invite_friend_to_challenge(session: AsyncSession, challenge_id: UUID, 
     if not friendship_map.get(friend_id):
         raise HTTPException(400, "Vous n’êtes pas ami avec cet utilisateur")
 
-    # Créer notification seulement
-    notification = Notification(
+    await crud_notification.create_notification(
+        session,
         user_id=friend_id,
-        actor_id=inviter_id,
         notification_type=NotificationType.CHALLENGE,
+        actor_id=inviter_id,
         data={
             "challenge_id": str(challenge.id),
             "challenge_name": challenge.name,
             "message": f"{inviter_membership.user.username} vous a invité au challenge '{challenge.name}'"
-        },
-        read=False,
-        created_at=datetime.utcnow()
+        }
     )
-    session.add(notification)
-    await (session.commit())
+
 
 async def remove_invitation(
     session: AsyncSession,
