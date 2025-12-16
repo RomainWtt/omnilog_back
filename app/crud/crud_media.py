@@ -276,7 +276,6 @@ async def update_media_translations(
         await session.commit()
         await session.refresh(media)
 
-        print(f"✅ Updated translations for {media.title}")
         return media
 
     except Exception as e:
