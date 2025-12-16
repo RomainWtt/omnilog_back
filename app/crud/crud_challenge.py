@@ -154,7 +154,7 @@ async def get_challenges_by_type(
 async def get_challenge_with_medias(
     session: AsyncSession,
     challenge_id: UUID,
-    personal_user_id: Optional[UUID] = None,
+    current_user: Optional[UUID] = None,
 ) -> Optional[dict]:
 
     challenge = await get_challenge_by_id(session, challenge_id)
@@ -186,7 +186,7 @@ async def get_challenge_with_medias(
     members = await crud_memberships.get_challenge_members(session, challenge.id)
 
     return {
-        "challenge": to_challenge_read(challenge, members, personal_user_id),
+        "challenge": to_challenge_read(challenge, members, current_user),
         "medias": medias
     }
 

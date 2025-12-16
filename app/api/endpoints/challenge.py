@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from app.core.deps import get_current_user, get_current_active_user
+from app.core.deps import get_current_user, get_current_active_user, get_optional_current_user
 from app.crud import crud_media, crud_challenge_stats, crud_challenge, crud_activity
 from app.db.models import User, ChallengeStatus, ChallengeType, MediaType, ChallengeMembership, ActivityType
 from app.db.session import get_session
@@ -107,7 +107,7 @@ async def search_challenges(
 async def get_challenge_with_medias_details(
         challenge_id: UUID,
         session: AsyncSession = Depends(get_session),
-        current_user: Optional[User] = Depends(get_current_active_user)
+        current_user: Optional[User] = Depends(get_optional_current_user)
 ):
     personal_user_id = current_user.id if current_user else None
 
