@@ -157,10 +157,27 @@ async def get_user_reviews(
         session: AsyncSession,
         user_id: UUID,
         limit: int = 20,
-        offset: int = 0
-) -> List[Review]:  # Retour à List[Review]
+        offset: int = 0,
+        rating_filter: Optional[int] = None,
+        search_query: Optional[str] = None,
+        search_type: str = "all",
+        sort_by: str = "recent"
+) -> List[Review]:
     """
-    Get all reviews created by a specific user.
+    Get all reviews created by a specific user with filtering and sorting.
+
+    Args:
+        session: Database session
+        user_id: User ID
+        limit: Maximum number of results
+        offset: Number of results to skip
+        rating_filter: Optional rating to filter by (1-5)
+        search_query: Optional search text for content AND/OR media title
+        search_type: Type of search ('all', 'content', 'media')
+        sort_by: Sort order ('recent', 'oldest', 'rating-high', 'rating-low')
+
+    Returns:
+        List of Review objects
     """
     stmt = (
         select(Review)
@@ -172,7 +189,50 @@ async def get_user_reviews(
         .where(Review.user_id == user_id, Review.is_visible == True)
     )
 
-    stmt = stmt.order_by(Review.created_at.desc()).limit(limit).offset(offset)
+    # Filter by rating
+    if rating_filter is not None:
+        stmt = stmt.where(Review.rating == rating_filter)
+
+    # Filter by search query with conditional logic based on search_type
+    if search_query and search_query.strip():
+        search_pattern = f"%{search_query.strip()}%"
+
+        if search_type == "content":
+            # Recherche uniquement dans le contenu des commentaires
+            stmt = stmt.where(Review.content.ilike(search_pattern))
+        elif search_type == "media":
+            # Recherche uniquement dans les titres des médias
+            stmt = stmt.join(Media, Review.media_id == Media.id)
+            stmt = stmt.where(
+                or_(
+                    Media.title.ilike(search_pattern),
+                    Media.original_title.ilike(search_pattern)
+                )
+            )
+        else:  # search_type == "all" (par défaut)
+            # Recherche dans le contenu ET les titres
+            stmt = stmt.join(Media, Review.media_id == Media.id)
+            stmt = stmt.where(
+                or_(
+                    Review.content.ilike(search_pattern),
+                    Media.title.ilike(search_pattern),
+                    Media.original_title.ilike(search_pattern)
+                )
+            )
+
+    # Apply sorting
+    if sort_by == "recent":
+        stmt = stmt.order_by(Review.created_at.desc())
+    elif sort_by == "oldest":
+        stmt = stmt.order_by(Review.created_at.asc())
+    elif sort_by == "rating-high":
+        stmt = stmt.order_by(Review.rating.desc(), Review.created_at.desc())
+    elif sort_by == "rating-low":
+        stmt = stmt.order_by(Review.rating.asc(), Review.created_at.desc())
+    else:
+        stmt = stmt.order_by(Review.created_at.desc())
+
+    stmt = stmt.limit(limit).offset(offset)
 
     result = await session.execute(stmt)
     return list(result.scalars().all())

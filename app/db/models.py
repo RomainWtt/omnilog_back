@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Optional
 from uuid import UUID, uuid4
 
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel, Column, JSON
 
 
@@ -34,6 +35,13 @@ class ChallengeType(str, Enum):
     PRIVATE = "private"
 
 
+class ChallengeStatus(str, Enum):
+    TOUS = "tous"
+    A_VENIR = "a_venir"
+    EN_COURS = "en_cours"
+    TERMINE = "termine"
+
+
 class ActivityType(str, Enum):
     MEDIA_ADDED = "media_added"
     MEDIA_COMPLETED = "media_completed"
@@ -41,12 +49,10 @@ class ActivityType(str, Enum):
     REVIEW_POSTED = "review_posted"
     FRIEND_ADDED = "friend_added"
     CHALLENGE_JOINED = "challenge_joined"
-
-class ChallengeStatus(str, Enum):
-    TOUS = "tous"
-    A_VENIR = "a_venir"
-    EN_COURS = "en_cours"
-    TERMINE = "termine"
+    CHALLENGE_COMPLETED_EPISODE = "challenge_completed_episode"
+    CHALLENGE_MILESTONE = "challenge_milestone" # ? a voir si a garder
+    CHALLENGE_LEFT = "challenge_left"
+    CHALLENGE_FINISHED = "challenge_finished"
 
 
 # Models
@@ -157,6 +163,11 @@ class Media(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+    translations: dict = Field(
+        default_factory=dict,
+        sa_column=Column(JSON().with_variant(JSONB, "postgresql"))
+    )
+
     user_entries: list["UserMediaEntry"] = Relationship(back_populates="media")
     reviews: list["Review"] = Relationship(back_populates="media")
 
@@ -255,7 +266,8 @@ class Challenge(SQLModel, table=True):
 
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
-    media_list: Optional[list[int]] = Field(default=None, sa_column=Column(JSON))
+    #media_list: Optional[list[int]] = Field(default=None, sa_column=Column(JSON))
+    media_list: Optional[list[dict]] = Field(default_factory=list, sa_column=Column(JSON))
 
     creator_id: UUID = Field(foreign_key="users.id", index=True)
 
@@ -302,6 +314,9 @@ class NotificationType(str, Enum):
     FRIEND_DECLINED = "friend_declined"
     FAVORITE_ADDED = "favorite_added"
     REVIEW_POSTED = "review_posted"
+    #CHALLENGE_INVITATION = "challenge_invitation"
+    #CHALLENGE_ACCEPTED = "challenge_accepted"
+    #CHALLENGE_DECLINED = "challenge_declined"
     CHALLENGE = "challenge"
 
 class Notification(SQLModel, table=True):

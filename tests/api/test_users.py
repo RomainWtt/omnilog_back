@@ -69,7 +69,7 @@ async def test_get_user_without_auth(client: AsyncClient):
     """Test accessing protected endpoint without authentication"""
     response = await client.get("/api/v1/users/me")
     
-    assert response.status_code == 403  # No credentials provided
+    assert response.status_code == 401  # No credentials provided
 
 
 @pytest.mark.asyncio

@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 from typing import Optional, Any
 from app.core.config import settings
@@ -6,6 +8,15 @@ from fastapi import HTTPException, status
 
 class TMDBService:
     """Service for interacting with TMDB API"""
+
+    SUPPORTED_LANGUAGES = ['fr', 'en', 'de', 'nl']
+
+    TMDB_LANGUAGE_MAP = {
+        'fr': 'fr-FR',  # Français de France
+        'en': 'en-GB',  # Anglais des États-Unis
+        'de': 'de-DE',  # Allemand d'Allemagne
+        'nl': 'nl-NL'  # Néerlandais des Pays-Bas
+    }
 
     def __init__(self):
         self.api_key = settings.TMDB_API_KEY
@@ -422,5 +433,223 @@ class TMDBService:
                     detail="TMDB API is unavailable"
                 )
             return response.json()
+
+    async def get_media_translations(
+            self,
+            tmdb_id: int,
+            media_type: str  # "movie" ou "tv"
+    ) -> dict[str, dict[str, str]]:
+        """
+        Récupère toutes les traductions depuis TMDB.
+        Retourne un dictionnaire structuré pour JSONB.
+
+        Returns:
+            {
+                "title": {"fr": "...", "en": "...", "de": "...", "nl": "..."},
+                "overview": {"fr": "...", "en": "...", "de": "...", "nl": "..."}
+            }
+        """
+        async with httpx.AsyncClient() as client:
+            # Récupérer les traductions via l'endpoint TMDB
+            response = await client.get(
+                f"{self.base_url}/{media_type}/{tmdb_id}/translations",
+                headers=self.headers
+            )
+
+            if response.status_code != 200:
+                print(f"⚠️ Could not fetch translations for {media_type} {tmdb_id}")
+                return {"title": {}, "overview": {}}
+
+            data = response.json()
+            translations = {
+                "title": {},
+                "overview": {}
+            }
+
+            # Parser les traductions TMDB
+            for translation in data.get("translations", []):
+                lang_code = translation.get("iso_639_1")
+
+                # Filtrer seulement les langues supportées
+                if lang_code not in self.SUPPORTED_LANGUAGES:
+                    continue
+
+                trans_data = translation.get("data", {})
+
+                # Extraire title (ou name pour TV)
+                title = trans_data.get("title") or trans_data.get("name", "")
+                overview = trans_data.get("overview", "")
+
+                if title:
+                    translations["title"][lang_code] = title
+                if overview:
+                    translations["overview"][lang_code] = overview
+
+            return translations
+
+    def _map_to_tmdb_language(self, lang_code: str) -> str:
+        """Mappe ISO 639-1 vers ISO 3166-1."""
+        return self.TMDB_LANGUAGE_MAP.get(lang_code, lang_code)  # Fallback sur le code 639-1 si non trouvé
+
+    async def get_complete_translations(
+            self,
+            tmdb_id: int,
+            media_type: str
+    ) -> dict[str, dict[str, str]]:
+        """
+        Récupère les traductions BULK (translations block) et fait des appels
+        individuels (language=XX-XX) pour les langues manquantes.
+        """
+        # 1. Appel Initial Bulk (méthode de base)
+        # Cet appel doit être fait sans paramètre `language` pour garantir qu'on reçoit le bloc `translations` complet.
+        translations = await self.get_media_translations(tmdb_id, media_type)
+
+        # 2. Vérifier quelles langues manquent dans le résultat BULK
+        missing_languages = []
+        for lang in self.SUPPORTED_LANGUAGES:
+            # Si la clé de la langue est manquante ou que le titre est vide
+            if lang not in translations.get("title", {}) or not translations["title"][lang]:
+                missing_languages.append(lang)
+
+        # 3. Faire des appels individuels pour les langues manquantes
+        if missing_languages:
+
+            # Utilisez asyncio.gather pour paralléliser ces appels (beaucoup plus rapide)
+            individual_fetches = [
+                self._fetch_individual_translation(tmdb_id, media_type, lang)
+                for lang in missing_languages
+            ]
+
+            results = await asyncio.gather(*individual_fetches)
+
+            # Fusionner les résultats
+            for lang, result in zip(missing_languages, results):
+                if result:
+                    if result.get("title"):
+                        translations["title"][lang] = result["title"]
+                    if result.get("overview"):
+                        translations["overview"][lang] = result["overview"]
+
+        return translations
+
+    # Nouvelle fonction interne pour l'appel unique
+    async def _fetch_individual_translation(self, tmdb_id: int, media_type: str, lang_code: str) -> Optional[
+        dict[str, str]]:
+        """Effectue un appel TMDB unique en utilisant le paramètre language=XX-XX."""
+        try:
+            tmdb_lang = self._map_to_tmdb_language(lang_code)
+
+            # Récupérer les détails dans cette langue
+            if media_type == "movie":
+                # Assurez-vous que cette fonction appelle l'endpoint principal avec `?language=XX-XX`
+                details = await self._get_movie_details_with_language(tmdb_id, tmdb_lang)
+            else:
+                details = await self._get_tv_details_with_language(tmdb_id, tmdb_lang)
+
+            title = details.get("title") or details.get("name")
+            overview = details.get("overview")
+
+            if title or overview:
+                return {
+                    "title": title or "",
+                    "overview": overview or ""
+                }
+
+            return None
+
+        except Exception as e:
+            print(f"⚠️ Failed to fetch {lang_code} translation: {e}")
+            return None
+
+    async def _get_movie_details_with_language(
+            self,
+            tmdb_id: int,
+            language: str
+    ) -> dict[str, Any]:
+        """Get movie details in specific language"""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/movie/{tmdb_id}",
+                headers=self.headers,
+                params={"language": language}
+            )
+            if response.status_code != 200:
+                return {}
+            return response.json()
+
+    async def _get_tv_details_with_language(
+            self,
+            tmdb_id: int,
+            language: str
+    ) -> dict[str, Any]:
+        """Get TV details in specific language"""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/tv/{tmdb_id}",
+                headers=self.headers,
+                params={"language": language}
+            )
+            if response.status_code != 200:
+                return {}
+            return response.json()
+
+    async def discover_movies(
+            self,
+            with_genres: Optional[str] = None,
+            primary_release_year_gte: Optional[int] = None,
+            primary_release_year_lte: Optional[int] = None,
+            vote_average_gte: Optional[float] = None,
+            sort_by: str = "popularity.desc",
+            page: int = 1
+    ) -> dict[str, Any]:
+        """Discover movies with filters (Wrapper for discover_media)"""
+        filters = {}
+
+        if with_genres:
+            filters["with_genres"] = with_genres
+        if primary_release_year_gte:
+            # discover_media s'attend à recevoir la date dans le format YYYY-MM-DD
+            # On va ajuster le filtre pour qu'il corresponde à la méthode discover_media existante
+            filters["primary_release_date.gte"] = f"{primary_release_year_gte}-01-01"
+        if primary_release_year_lte:
+            filters["primary_release_date.lte"] = f"{primary_release_year_lte}-12-31"
+        if vote_average_gte:
+            filters["vote_average.gte"] = vote_average_gte
+
+        return await self.discover_media(
+            media_type="movie",
+            page=page,
+            sort_by=sort_by,
+            **filters
+        )
+
+    async def discover_tv(
+            self,
+            with_genres: Optional[str] = None,
+            first_air_date_year_gte: Optional[int] = None,
+            first_air_date_year_lte: Optional[int] = None,
+            vote_average_gte: Optional[float] = None,
+            sort_by: str = "popularity.desc",
+            page: int = 1
+    ) -> dict[str, Any]:
+        """Discover TV shows with filters (Wrapper for discover_media)"""
+        filters = {}
+
+        if with_genres:
+            filters["with_genres"] = with_genres
+        if first_air_date_year_gte:
+            filters["first_air_date.gte"] = f"{first_air_date_year_gte}-01-01"
+        if first_air_date_year_lte:
+            filters["first_air_date.lte"] = f"{first_air_date_year_lte}-12-31"
+        if vote_average_gte:
+            filters["vote_average.gte"] = vote_average_gte
+
+        return await self.discover_media(
+            media_type="tv",
+            page=page,
+            sort_by=sort_by,
+            **filters
+        )
+
 
 tmdb_service = TMDBService()

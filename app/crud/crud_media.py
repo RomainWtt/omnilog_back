@@ -3,7 +3,8 @@ from uuid import UUID
 from datetime import datetime
 from sqlmodel import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import Media, MediaType, UserMediaEntry, ListStatus
+from app.db.models import Media, MediaType, UserMediaEntry, ListStatus, Review
+from app.services.tmdb_service import tmdb_service
 
 
 async def get_media_by_id(session: AsyncSession, media_id: UUID) -> Optional[Media]:
@@ -17,7 +18,7 @@ async def get_media_by_tmdb_id(
         tmdb_id: int,
         media_type: MediaType
 ) -> Optional[Media]:
-    """Get media by TMDB ID"""
+    """Get media by TMDB ID in the database"""
     result = await session.execute(
         select(Media).where(
             Media.tmdb_id == tmdb_id,
@@ -187,11 +188,15 @@ async def get_top_rated_completed(
         offset: int = 0
 ) -> List[UserMediaEntry]:
     """Get user's completed media with score >= min_score"""
-    query = select(UserMediaEntry).where(
+    query = select(UserMediaEntry, Review).where(
+        # 1. Les critères de base
         UserMediaEntry.user_id == user_id,
         UserMediaEntry.list_status == ListStatus.COMPLETED,
-        UserMediaEntry.score >= min_score,
-    ).order_by(UserMediaEntry.score.desc(), UserMediaEntry.completed_at.desc())
+        Review.rating >= min_score,
+
+        UserMediaEntry.media_id == Review.media_id,
+        UserMediaEntry.user_id == Review.user_id
+    ).order_by(Review.rating.desc())
 
     query = query.limit(limit).offset(offset)
     result = await session.execute(query)
@@ -220,3 +225,107 @@ async def get_user_favorites(
 
     result = await session.execute(stmt)
     return result.scalars().all()
+
+
+async def create_media_with_translations(
+        session: AsyncSession,
+        tmdb_id: int,
+        media_type: MediaType,
+        **media_data
+) -> Media:
+    """
+    Crée un média avec ses traductions depuis TMDB.
+    """
+    # Récupérer les traductions depuis TMDB
+    try:
+        translations = await tmdb_service.get_complete_translations(
+            tmdb_id=tmdb_id,
+            media_type=media_type.value
+        )
+        media_data["tmdb_id"] = tmdb_id
+        media_data["media_type"] = media_type
+        media_data["translations"] = translations
+    except Exception as e:
+        print(f"⚠️ Failed to fetch translations for {media_type} {tmdb_id}: {e}")
+        media_data["translations"] = {"title": {}, "overview": {}}
+
+    # Créer le média
+    return await create_media(session, **media_data)
+
+
+async def update_media_translations(
+        session: AsyncSession,
+        media_id: UUID
+) -> Optional[Media]:
+    """
+    Met à jour uniquement les traductions d'un média existant.
+    """
+    media = await get_media_by_id(session, media_id)
+    if not media:
+        return None
+
+    try:
+        translations = await tmdb_service.get_complete_translations(
+            tmdb_id=media.tmdb_id,
+            media_type=media.media_type.value
+        )
+
+        media.translations = translations
+        media.updated_at = datetime.utcnow()
+
+        await session.commit()
+        await session.refresh(media)
+
+        print(f"✅ Updated translations for {media.title}")
+        return media
+
+    except Exception as e:
+        print(f"❌ Error updating translations: {e}")
+        return None
+
+
+def get_translated_field(
+        media: Media,
+        field: str,
+        language: str,
+        fallback_language: str = "en"
+) -> str:
+    """
+    Récupère un champ traduit depuis le JSONB.
+
+    Args:
+        media: L'objet Media
+        field: "title" ou "overview"
+        language: Code langue (fr, en, de, nl)
+        fallback_language: Langue de secours
+
+    Returns:
+        Le texte traduit ou le fallback
+    """
+    translations = media.translations or {}
+
+    # Essayer la langue demandée
+    if field in translations and language in translations[field]:
+        return translations[field][language]
+
+    # Essayer le fallback
+    if field in translations and fallback_language in translations[field]:
+        return translations[field][fallback_language]
+
+    # Dernière option : utiliser le champ original
+    if field == "title":
+        return media.title or ""
+    elif field == "overview":
+        return media.overview or ""
+
+    return ""
+
+
+async def filter_challenges_by_media(user_challenges: list, media: Media):
+    if not user_challenges:
+        return []
+
+    return [
+        c for c in user_challenges
+        if c.media_list and media.tmdb_id in c.media_list
+    ]

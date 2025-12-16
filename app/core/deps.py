@@ -11,13 +11,21 @@ from app.crud.crud_user import get_user_by_id
 from app.db.models import User
 from app.core.security import decode_token
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
         credentials: HTTPAuthorizationCredentials = Depends(security),
         session: AsyncSession = Depends(get_session)
 ) -> User:
+
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     """Get current authenticated user from JWT token"""
     token = credentials.credentials
 
