@@ -33,6 +33,7 @@ from app.services.recommendation_service import recommendation_service
 
 router = APIRouter()
 
+
 @router.get("/recommendations", response_model=List[MediaRead])
 async def get_recommendations(
         limit: int = Query(30, ge=1, le=50),
@@ -141,7 +142,7 @@ async def get_watchlist_stats(
     - Animés (anime)
     """
 
-    # Requête pour compter les films (SANS les animés)
+    # Requête pour compter les films
     movies_stmt = (
         select(func.count(UserMediaEntry.media_id))
         .join(Media, UserMediaEntry.media_id == Media.id)
@@ -162,7 +163,6 @@ async def get_watchlist_stats(
             UserMediaEntry.user_id == current_user.id,
             Media.media_type == MediaType.TV,
             UserMediaEntry.list_status == ListStatus.PLAN_TO_WATCH,
-            ~cast(Media.genre_ids, JSONB).contains([16])
         )
     )
     series_result = await session.execute(series_stmt)
@@ -177,11 +177,15 @@ async def get_watchlist_stats(
         .where(
             UserMediaEntry.user_id == current_user.id,
             UserMediaEntry.list_status == ListStatus.PLAN_TO_WATCH,
+            Media.media_type != MediaType.MOVIE,
+            # On pourrait avoir des animé ayant le type movie alors que ceux-ci sont compté dans la partie movie
             cast(Media.genre_ids, JSONB).contains([16])
         )
     )
+
     anime_result = await session.execute(anime_stmt)
     anime_count = anime_result.scalar() or 0
+    print(f"Nombre d'animé {anime_stmt}")
 
     # Total = Films (non animés) + Séries (non animées) + Animés
     total_count = movies_count + series_count + anime_count
