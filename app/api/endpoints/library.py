@@ -163,6 +163,7 @@ async def get_watchlist_stats(
             UserMediaEntry.user_id == current_user.id,
             Media.media_type == MediaType.TV,
             UserMediaEntry.list_status == ListStatus.PLAN_TO_WATCH,
+            ~cast(Media.genre_ids, JSONB).contains([16])
         )
     )
     series_result = await session.execute(series_stmt)
