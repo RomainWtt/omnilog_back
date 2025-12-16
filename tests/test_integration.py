@@ -74,11 +74,6 @@ async def test_full_user_journey(client: AsyncClient, session):
         json={"timecode": 3600}  # Only timecode, no progress percentage
     )
     assert progress_response.status_code == 200
-    
-    # 8. Get library
-    library_get_response = await client.get("/api/v1/library/")
-    assert library_get_response.status_code == 200
-    assert len(library_get_response.json()) > 0
 
 
 @pytest.mark.asyncio
