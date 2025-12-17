@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.db.models import Notification, NotificationType
+from app.db.models import Notification, NotificationType, Challenge
 
 
 async def create_notification(
@@ -141,12 +141,12 @@ async def delete_old_notifications(
 
 
 async def get_user_notifications_by_type(
-    session: AsyncSession,
-    user_id: UUID,
-    notification_type: Optional[NotificationType] = None,
-    limit: int = 50,
-    offset: int = 0,
-    unread_only: bool = False
+        session: AsyncSession,
+        user_id: UUID,
+        notification_type: Optional[NotificationType] = None,
+        limit: int = 50,
+        offset: int = 0,
+        unread_only: bool = False
 ) -> Sequence[Notification]:
     """Récupère les notifications d'un utilisateur, éventuellement filtrées par type"""
     query = (
@@ -165,3 +165,17 @@ async def get_user_notifications_by_type(
     query = query.limit(limit).offset(offset)
     result = await session.execute(query)
     return result.scalars().all()
+
+
+async def mark_notification_challenge_as_read(session: AsyncSession, challenge_id: UUID, user_id: UUID) -> int:
+    """Marque une notification challenge comme lue"""
+    result = await session.execute(
+        update(Notification)
+        .where(
+            Notification.data['challenge_id'].as_string() == str(challenge_id),
+            Notification.user_id == user_id
+        )
+        .values(read=True)
+    )
+    await session.commit()
+    return result.rowcount
