@@ -1,21 +1,14 @@
-from datetime import datetime
+from typing import Optional, List
+import json
 from typing import Optional, List
 from uuid import UUID
-import json
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.deps import get_current_user, get_current_active_user, get_optional_current_user
-from app.crud import crud_media, crud_challenge_stats, crud_challenge, crud_activity
-from app.db.models import User, ChallengeStatus, ChallengeType, MediaType, ChallengeMembership, ActivityType
-from app.db.session import get_session
-from app.schemas.activity import ActivityChallenge
-from app.schemas.challenge import ChallengeCreate, ChallengeRead, ChallengeProgressUpdate, ChallengeUpdate
-
-
+from app.crud import crud_challenge_stats, crud_challenge, crud_activity, crud_notification
 from app.crud.crud_challenge import (
     get_challenge_by_id,
     search_challenges_details,
@@ -24,6 +17,10 @@ from app.crud.crud_challenge import (
     list_newest_challenges_with_details,
     get_challenge_with_medias,
 )
+from app.db.models import User, ChallengeStatus, ChallengeType, ChallengeMembership
+from app.db.session import get_session
+from app.schemas.activity import ActivityChallenge
+from app.schemas.challenge import ChallengeCreate, ChallengeRead, ChallengeProgressUpdate, ChallengeUpdate
 from app.schemas.memberships import RankingMembership
 
 router = APIRouter()
@@ -31,31 +28,33 @@ router = APIRouter()
 
 @router.post("/", response_model=ChallengeRead)
 async def create_challenge(
-    data: ChallengeCreate,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+        data: ChallengeCreate,
+        session: AsyncSession = Depends(get_session),
+        current_user: User = Depends(get_current_user),
 ):
     return await crud_challenge.add_new_challenge(session, data, current_user)
 
+
 @router.post("/{challenge_id}", response_model=ChallengeRead)
 async def get_challenge_by_id(
-    challenge_id: UUID,
-    session: AsyncSession = Depends(get_session)
+        challenge_id: UUID,
+        session: AsyncSession = Depends(get_session)
 ):
-    return await crud_challenge.get_challenge_by_id(session = session, challenge_id=challenge_id)
+    return await crud_challenge.get_challenge_by_id(session=session, challenge_id=challenge_id)
 
 
 @router.patch("/update/{challenge_id}", response_model=ChallengeRead)
 async def update_challenge(
-    challenge_id: UUID,
-    data: ChallengeUpdate,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_active_user),
+        challenge_id: UUID,
+        data: ChallengeUpdate,
+        session: AsyncSession = Depends(get_session),
+        current_user: User = Depends(get_current_active_user),
 ):
     """
     Met à jour les informations d'un challenge tant qu'il n'a pas commencé.
     """
     return await crud_challenge.update_challenge(challenge_id, data, session, current_user)
+
 
 @router.get("/type/{challenge_type}", response_model=List[ChallengeRead])
 async def get_challenges_by_type_route(
@@ -187,6 +186,14 @@ async def join_challenge(
         raise HTTPException(status_code=404, detail="Challenge introuvable")
 
     membership = await crud_challenge.join_challenge_by_ids(session, current_user.id, challenge_id)
+
+    if membership is None:
+        raise HTTPException(status_code=404, detail="Challenge introuvable")
+
+    await crud_notification.mark_notification_challenge_as_read(session=session,
+                                                                challenge_id=challenge_id,
+                                                                user_id=current_user.id)
+
     return {"success": True, "membership_id": getattr(membership, "user_id", None)}
 
 
@@ -195,22 +202,23 @@ async def update_user_progress(
         challenge_id: UUID,
         data: ChallengeProgressUpdate,
         session: AsyncSession = Depends(get_session),
-        current_user = Depends(get_current_active_user)
+        current_user=Depends(get_current_active_user)
 ):
-    await crud_challenge_stats.update_progress(session = session, data = data, challenge_id= challenge_id, current_user=current_user )
+    await crud_challenge_stats.update_progress(session=session, data=data, challenge_id=challenge_id,
+                                               current_user=current_user)
 
 
 @router.get("/{challenge_id}/ranking", response_model=list[RankingMembership])
 async def calculate_ranking_challenge(
-    challenge_id: UUID,
-    session: AsyncSession = Depends(get_session)
+        challenge_id: UUID,
+        session: AsyncSession = Depends(get_session)
 ):
     return await crud_challenge_stats.calculate_ranking_challenge(session, challenge_id)
 
 
 @router.get("/{challenge_id}/activities", response_model=List[ActivityChallenge])
 async def read_challenge_activities(
-    challenge_id: UUID,
-    session: AsyncSession = Depends(get_session)
+        challenge_id: UUID,
+        session: AsyncSession = Depends(get_session)
 ):
     return await crud_activity.get_challenge_activities(session, challenge_id)
