@@ -1173,14 +1173,15 @@ async def get_top_media_by_genre(
 @router.get("/tv/{tmdb_id}/seasons", response_model=TVSeasonsSchema)
 async def get_tv_seasons_episodes(
         tmdb_id: int,
+        language: str = Query("fr", description="Language code (fr, en, de, nl)"),
         session: AsyncSession = Depends(get_session)
 ):
     """
-    Get all seasons and episodes for a TV show
+    Get all seasons and episodes for a TV show with translations
     """
     try:
-        # Get TV show details to know how many seasons exist
-        tv_details = await tmdb_service.get_tv_details(tmdb_id)
+        # Get TV show details to know how many seasons exist (with language)
+        tv_details = await tmdb_service.get_tv_details(tmdb_id, language=language)
 
         seasons = tv_details.get("seasons", [])
 
@@ -1190,7 +1191,7 @@ async def get_tv_seasons_episodes(
                 detail="No seasons found for this TV show"
             )
 
-        # Create tasks to fetch all seasons in parallel
+        # Create tasks to fetch all seasons in parallel (with language)
         tasks = []
         season_numbers = []
 
@@ -1198,7 +1199,7 @@ async def get_tv_seasons_episodes(
             season_number = season.get("season_number")
             # Include all seasons (even Season 0 for specials)
             season_numbers.append(season_number)
-            tasks.append(tmdb_service.get_tv_season(tmdb_id, season_number))
+            tasks.append(tmdb_service.get_tv_season(tmdb_id, season_number, language=language))
 
         # Execute all requests in parallel
         season_responses = await asyncio.gather(*tasks, return_exceptions=True)
@@ -1208,6 +1209,7 @@ async def get_tv_seasons_episodes(
 
         for season_number, response in zip(season_numbers, season_responses):
             if isinstance(response, Exception):
+                print(f"⚠️ Error fetching season {season_number}: {response}")
                 continue
 
             episodes = response.get("episodes", [])
@@ -1237,6 +1239,8 @@ async def get_tv_seasons_episodes(
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        print(f"Error fetching TV seasons: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching TV seasons: {str(e)}"

@@ -127,13 +127,16 @@ class TMDBService:
                 )
             return response.json()
 
-    async def get_tv_details(self, tmdb_id: int) -> dict[str, Any]:
+    async def get_tv_details(self, tmdb_id: int, language: str = "fr") -> dict[str, Any]:
         """Get detailed information about a TV show"""
+        # Mapper le code langue vers le format TMDB
+        tmdb_language = self._map_to_tmdb_language(language)
+
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{self.base_url}/tv/{tmdb_id}",
                 headers=self.headers,
-                params={"language": "en-US", "append_to_response": "credits,videos"}
+                params={"language": tmdb_language, "append_to_response": "credits,videos"}
             )
             if response.status_code == 404:
                 raise HTTPException(
@@ -413,13 +416,16 @@ class TMDBService:
                 )
             return response.json()
 
-    async def get_tv_season(self, tmdb_id: int, season_number: int) -> dict[str, Any]:
+    async def get_tv_season(self, tmdb_id: int, season_number: int, language: str = "fr") -> dict[str, Any]:
         """Get detailed information about a specific TV season"""
+        # Mapper le code langue vers le format TMDB
+        tmdb_language = self._map_to_tmdb_language(language)
+
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{self.base_url}/tv/{tmdb_id}/season/{season_number}",
                 headers=self.headers,
-                params={"language": "en-US"}
+                params={"language": tmdb_language}
             )
             if response.status_code == 404:
                 raise HTTPException(
