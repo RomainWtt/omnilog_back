@@ -77,6 +77,10 @@ class User(SQLModel, table=True):
     email_verification_token: Optional[str] = Field(default=None, max_length=64)
     email_verification_token_expires: Optional[datetime] = None
 
+    # Tokens de réinitialisation de mot de passe
+    password_reset_token: Optional[str] = Field(default=None, max_length=64, index=True)
+    password_reset_token_expires: Optional[datetime] = None
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

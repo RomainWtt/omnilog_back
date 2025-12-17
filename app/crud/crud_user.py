@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 from uuid import UUID
 
@@ -64,6 +64,9 @@ async def create_user(
         session: AsyncSession,
         email: str,
         username: str,
+        birth_date: date,
+        is_public: bool = True,
+        avatar_url: Optional[str] = None,
         password: Optional[str] = None,
         **kwargs
 ) -> User:
@@ -72,6 +75,9 @@ async def create_user(
         email=email,
         username=username,
         hashed_password=get_password_hash(password) if password else None,
+        birth_date=birth_date,
+        is_public=is_public,
+        avatar_url=avatar_url,
         **kwargs
     )
     session.add(user)
@@ -275,3 +281,12 @@ async def search_users_friendship_by_username(
     result = await session.execute(query)
     return list(result.scalars().all())
 
+async def get_user_by_password_reset_token(
+    session: AsyncSession,
+    token: str
+) -> Optional[User]:
+    """Récupère un utilisateur par son token de réinitialisation"""
+    result = await session.execute(
+        select(User).where(User.password_reset_token == token)
+    )
+    return result.scalar_one_or_none()
