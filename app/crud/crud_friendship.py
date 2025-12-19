@@ -2,13 +2,15 @@ from datetime import datetime
 from typing import Optional, List, Any, Coroutine, Sequence, Dict
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import or_
 
-from app.crud import crud_memberships
-from app.db.models import Friendship, FriendshipStatus, User
+from app.api.endpoints.notifications import get_declined_friends_for_challenge
+from app.crud import crud_memberships, crud_notification
+from app.db.models import Friendship, FriendshipStatus, User, NotificationType, Notification
 from app.schemas.friendship import FriendProfileRead
 from app.schemas.user import UserPublic
 
@@ -389,18 +391,19 @@ async def check_friendship_status(
 
     return friendship_map
 
-
 async def get_friends_not_in_challenge(
     session: AsyncSession,
     current_user: UUID,
     challenge_id: UUID
-) -> list[FriendProfileRead]:
+) -> List[FriendProfileRead]:
     """
-    Renvoie la liste des amis ACCEPTED qui ne sont pas encore membres du challenge.
+    Renvoie la liste des amis ACCEPTED qui peuvent encore être invités au challenge :
+    - pas encore membres
+    - pas déjà invités (ignore les refus)
     """
+    # 1️⃣ Tous les amis ACCEPTED
     result = await session.execute(select(User.id).where(User.id != current_user))
     all_user_ids = [row[0] for row in result.all()]
-
     if not all_user_ids:
         return []
 
@@ -409,13 +412,33 @@ async def get_friends_not_in_challenge(
     if not friends_ids:
         return []
 
+    # 2️⃣ Membres actuels du challenge
     members = await crud_memberships.get_challenge_members(session, challenge_id)
     member_ids = [member.id for member, _ in members]
 
-    inviteable_ids = [fid for fid in friends_ids if fid not in member_ids]
+    # 3️⃣ Invitations existantes parmi les amis
+    stmt = select(Notification).where(
+        Notification.notification_type == NotificationType.CHALLENGE_INVITATION,
+        Notification.data["challenge_id"].as_string() == str(challenge_id),
+        Notification.user_id.in_(friends_ids)
+    )
+    result = await session.execute(stmt)
+    existing_notifications = result.scalars().all()
+
+    invited_ids = [
+        UUID(n.data.get("friend_id")) if "friend_id" in n.data else UUID(n.user_id)
+        for n in existing_notifications
+    ]
+
+    # 4️⃣ Filtrer les amis invitables
+    inviteable_ids = [
+        fid for fid in friends_ids
+        if fid not in member_ids and fid not in invited_ids
+    ]
     if not inviteable_ids:
         return []
 
+    # 5️⃣ Récupérer les profils
     result = await session.execute(select(User).where(User.id.in_(inviteable_ids)))
     users = result.scalars().all()
 

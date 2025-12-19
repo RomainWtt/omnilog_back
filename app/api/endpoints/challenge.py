@@ -17,7 +17,7 @@ from app.crud.crud_challenge import (
     list_newest_challenges_with_details,
     get_challenge_with_medias,
 )
-from app.db.models import User, ChallengeStatus, ChallengeType, ChallengeMembership
+from app.db.models import User, ChallengeStatus, ChallengeType, ChallengeMembership, NotificationType
 from app.db.session import get_session
 from app.schemas.activity import ActivityChallenge
 from app.schemas.challenge import ChallengeCreate, ChallengeRead, ChallengeProgressUpdate, ChallengeUpdate
@@ -182,17 +182,25 @@ async def join_challenge(
         current_user: User = Depends(get_current_active_user),
 ):
     challenge = await get_challenge_by_id(challenge_id, session)
-    if not challenge:
-        raise HTTPException(status_code=404, detail="Challenge introuvable")
+
 
     membership = await crud_challenge.join_challenge_by_ids(session, current_user.id, challenge_id)
 
     if membership is None:
         raise HTTPException(status_code=404, detail="Challenge introuvable")
 
-    await crud_notification.mark_notification_challenge_as_read(session=session,
-                                                                challenge_id=challenge_id,
-                                                                user_id=current_user.id)
+    if challenge.challenge_type == ChallengeType.PRIVATE :
+        await crud_notification.update_type_notification(
+            session=session,
+            challenge_id=challenge_id,
+            invitee_id=current_user.id,
+            notification_type=NotificationType.CHALLENGE_ACCEPTED
+        )
+        await crud_notification.mark_notification_challenge_as_read(
+            session=session,
+            challenge_id=challenge_id,
+            user_id=current_user.id
+        )
 
     return {"success": True, "membership_id": getattr(membership, "user_id", None)}
 

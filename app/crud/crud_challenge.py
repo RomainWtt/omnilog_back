@@ -1,18 +1,18 @@
-from datetime import datetime, timezone
-from typing import Optional, Tuple, List, cast
+from datetime import datetime
+from typing import Optional, Tuple, List
 from uuid import UUID
 
 from fastapi import HTTPException
 
-from sqlalchemy import func, update, delete, String
+from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, and_, or_
 
 from app.api.endpoints.media import get_media_by_tmdb_id
-from app.crud import crud_media, crud_memberships, crud_friendship, crud_activity, crud_notification
+from app.api.endpoints.notifications import get_declined_friends_for_challenge
+from app.crud import crud_media, crud_memberships, crud_friendship, crud_notification
 from app.crud.crud_media import create_media
-from app.db.models import Challenge, ChallengeStatus, Media, ChallengeMembership, User, MediaType, ChallengeType, \
-    Notification, NotificationType, ActivityType
+from app.db.models import Challenge, ChallengeStatus, ChallengeMembership, User, MediaType, NotificationType
 from app.schemas.challenge import ChallengeCreate, ChallengeRead, ChallengeUpdate
 from app.schemas.media import MediaRead
 
@@ -339,14 +339,31 @@ async def invite_friend_to_challenge(session: AsyncSession, challenge_id: UUID, 
     if not inviter_membership or not inviter_membership.is_admin:
         raise HTTPException(403, "Seul un administrateur peut inviter un ami")
 
-    friendship_map = await crud_friendship.check_friendship_status(session, inviter_id, [friend_id])
+    friendship_map = await crud_friendship.check_friendship_status(session, inviter_id, [friend_id]) # TODO afficher les amis qui ont pas de notifs ou notif declined
     if not friendship_map.get(friend_id):
         raise HTTPException(400, "Vous n’êtes pas ami avec cet utilisateur")
+    """
+    existing_notifications = await crud_notification.get_user_notifications_by_type(
+        session=session,
+        user_id=friend_id,
+        notification_type=NotificationType.CHALLENGE_INVITATION,
+        unread_only=False,
+        limit=100
+    )
+    for notif in existing_notifications:
+        if notif.data.get("challenge_id") == str(challenge_id):
+            raise HTTPException(400, "Cet utilisateur a déjà été invité à ce challenge")
+
+    # Vérifier si l'utilisateur a décliné l'invitation
+    declined_notifications = await get_declined_friends_for_challenge(session, challenge_id)
+    if any(n.data.get("friend_id") == str(friend_id) for n in declined_notifications):
+        raise HTTPException(400, "Cet utilisateur a déjà refusé l'invitation à ce challenge")
+    """
 
     await crud_notification.create_notification(
-        session,
+        session = session,
         user_id=friend_id,
-        notification_type=NotificationType.CHALLENGE,
+        notification_type=NotificationType.CHALLENGE_INVITATION,
         actor_id=inviter_id,
         data={
             "challenge_id": str(challenge.id),
@@ -354,25 +371,3 @@ async def invite_friend_to_challenge(session: AsyncSession, challenge_id: UUID, 
             "message": f"{inviter_membership.user.username} vous a invité au challenge '{challenge.name}'"
         }
     )
-
-
-async def remove_invitation(
-    session: AsyncSession,
-    challenge_id: UUID,
-    invitee_id: UUID
-) -> None:
-    """
-    Supprime une invitation à un challenge.
-    """
-    stmt = (
-        delete(Notification)
-        .where(
-            and_(
-                Notification.user_id == invitee_id,
-                Notification.notification_type == NotificationType.CHALLENGE,
-                cast(Notification.data["challenge_id"], String) == str(challenge_id)
-            )
-        )
-    )
-    await session.execute(stmt)
-    await session.commit()

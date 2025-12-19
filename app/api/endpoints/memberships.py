@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_active_user
 from app.crud import crud_memberships, crud_challenge, crud_activity, crud_notification
 from app.crud.crud_memberships import get_challenge_members, get_user_membership_by_challenge, create_membership_by_ids
-from app.db.models import ChallengeMembership, User, Challenge, Activity, ActivityType
+from app.db.models import ChallengeMembership, User, Challenge, Activity, ActivityType, NotificationType
 from app.db.session import get_session
 from app.schemas.memberships import MembershipRead, RankingMembership
 from app.schemas.user import UserRead
@@ -132,11 +132,10 @@ async def refuse_invitation(
     session: AsyncSession = Depends(get_session),
     current_user: UserRead = Depends(get_current_active_user)
 ):
-    await crud_challenge.remove_invitation(
-        session=session,
-        challenge_id=challenge_id,
-        invitee_id=current_user.id
-    )
+    await crud_notification.update_type_notification(session=session,
+                                                     challenge_id=challenge_id,
+                                                     invitee_id=current_user.id,
+                                                     notification_type = NotificationType.CHALLENGE_DECLINED)
     await crud_notification.mark_notification_challenge_as_read(session=session,
                                                                 challenge_id=challenge_id,
                                                                 user_id=current_user.id)
