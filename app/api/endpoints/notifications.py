@@ -3,11 +3,12 @@
 from typing import List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, update
+from sqlalchemy import select, update, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud import crud_notification
 from app.core.deps import get_current_active_user
+from app.crud.crud_notification import get_user_notifications_by_type
 from app.db.models import User, Notification, NotificationType
 from app.db.session import get_session
 from app.schemas.notification import NotificationRead
@@ -281,11 +282,7 @@ async def reset_notification_preferences(
 
 
 
-@router.get(
-    "/challenge-invitation",
-    response_model=List[NotificationRead],
-    summary="Récupère les notifications de type 'challenge' de l'utilisateur"
-)
+@router.get("/challenge-invitation", response_model=List[NotificationRead],  summary="Récupère les notifications d'invitiation de l'utilisateur")
 async def get_challenge_notifications(
     unread_only: bool = False,
     limit: int = 50,
@@ -296,9 +293,29 @@ async def get_challenge_notifications(
     notifications = await crud_notification.get_user_notifications_by_type(
         session=session,
         user_id=current_user.id,
-        notification_type=NotificationType.CHALLENGE,
+        notification_type=NotificationType.CHALLENGE_INVITATION,
         unread_only=unread_only,
         limit=limit,
         offset=offset
     )
     return [NotificationRead.model_validate(n) for n in notifications]
+
+
+
+async def get_declined_friends_for_challenge(
+    session: AsyncSession,
+    challenge_id: UUID,
+    friend_id: UUID | None = None
+) -> list[Notification]:
+    stmt = select(Notification).where(
+        and_(
+            Notification.notification_type == NotificationType.CHALLENGE_DECLINED,
+            Notification.data["challenge_id"].as_string() == str(challenge_id)
+        )
+    )
+
+    if friend_id:
+        stmt = stmt.where(Notification.user_id == friend_id)
+
+    result = await session.execute(stmt)
+    return result.scalars().all()

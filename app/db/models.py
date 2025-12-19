@@ -50,7 +50,7 @@ class ActivityType(str, Enum):
     FRIEND_ADDED = "friend_added"
     CHALLENGE_JOINED = "challenge_joined"
     CHALLENGE_COMPLETED_EPISODE = "challenge_completed_episode"
-    CHALLENGE_MILESTONE = "challenge_milestone" # ? a voir si a garder
+    CHALLENGE_MILESTONE = "challenge_milestone" # TODO ? a voir si a garder (non)
     CHALLENGE_LEFT = "challenge_left"
     CHALLENGE_FINISHED = "challenge_finished"
 
@@ -318,10 +318,11 @@ class NotificationType(str, Enum):
     FRIEND_DECLINED = "friend_declined"
     FAVORITE_ADDED = "favorite_added"
     REVIEW_POSTED = "review_posted"
-    #CHALLENGE_INVITATION = "challenge_invitation"
-    #CHALLENGE_ACCEPTED = "challenge_accepted"
-    #CHALLENGE_DECLINED = "challenge_declined"
-    CHALLENGE = "challenge"
+
+    CHALLENGE_INVITATION = "challenge_invitation"
+    CHALLENGE_ACCEPTED = "challenge_accepted"
+    CHALLENGE_DECLINED = "challenge_declined"
+    #CHALLENGE = "challenge"
 
 class Notification(SQLModel, table=True):
     __tablename__ = "notifications"

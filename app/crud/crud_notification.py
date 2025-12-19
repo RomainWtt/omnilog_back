@@ -2,7 +2,7 @@
 
 from typing import Sequence, Optional
 from uuid import UUID
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.db.models import Notification, NotificationType, Challenge
@@ -176,6 +176,24 @@ async def mark_notification_challenge_as_read(session: AsyncSession, challenge_i
             Notification.user_id == user_id
         )
         .values(read=True)
+    )
+    await session.commit()
+    return result.rowcount
+
+
+async def update_type_notification(session: AsyncSession,
+                                   challenge_id: UUID,
+                                   invitee_id: UUID,
+                                   notification_type: NotificationType) -> int:
+    result = await session.execute(
+        update(Notification)
+        .where(
+            and_(
+                Notification.data["challenge_id"].as_string() == str(challenge_id),
+                Notification.user_id == invitee_id
+            )
+        )
+        .values(notification_type=notification_type)
     )
     await session.commit()
     return result.rowcount
