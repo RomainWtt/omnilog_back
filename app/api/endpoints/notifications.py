@@ -156,7 +156,7 @@ async def get_notification_preferences(
                 "friend_declined": True,
                 "favorite_added": True,
                 "review_posted": True,
-                "challenge": True
+                "challenge_invitation": True
             }
 
         return NotificationPreferencesRead(
@@ -201,7 +201,7 @@ async def update_notification_preferences(
                 "friend_declined": True,
                 "favorite_added": True,
                 "review_posted": True,
-                "challenge": True
+                "challenge_invitation": True
             }
 
         # Mettre à jour avec les nouvelles valeurs
@@ -254,7 +254,7 @@ async def reset_notification_preferences(
             "friend_declined": True,
             "favorite_added": True,
             "review_posted": True,
-            "challenge": True
+            "challenge_invitation": True
         }
 
         # Sauvegarder en base de données
