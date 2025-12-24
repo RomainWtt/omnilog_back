@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.crud import crud_activity
+from app.crud import crud_activity, crud_challenge
 from app.db.models import User, ChallengeMembership, ActivityType
 
 
@@ -81,8 +81,6 @@ async def delete_membership_by_ids(
     Supprime le membership d'un utilisateur dans un challenge.
     Retourne True si le membership existait et a été supprimé.
     """
-    from app.crud import crud_challenge
-
     challenge = await crud_challenge.get_challenge_by_id(session, challenge_id)
     if challenge is None:
         return False

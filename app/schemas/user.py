@@ -10,8 +10,10 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
+    email: EmailStr
     password: str = Field(..., min_length=8, max_length=100)
-    birth_date: Optional[date] = None
+    birth_date: date  # OBLIGATOIRE maintenant
+    is_public: bool = True  # Ajouter ce champ
     avatar_url: Optional[str] = None
 
     @field_validator('password')
@@ -23,6 +25,13 @@ class UserCreate(UserBase):
             raise ValueError('Password must contain at least one digit')
         if not any(char.isupper() for char in v):
             raise ValueError('Password must contain at least one uppercase letter')
+        return v
+
+    @field_validator('username')
+    @classmethod
+    def validate_username(cls, v: str) -> str:
+        if not v.replace('_', '').replace('-', '').isalnum():
+            raise ValueError('Username can only contain letters, numbers, underscores and hyphens')
         return v
 
 
@@ -61,6 +70,7 @@ class UserPublic(BaseModel):
     avatar_url: Optional[str] = None
     social_links: Optional[dict] = None
     is_public: bool
+    email_verified: Optional[bool] = None
 
     class Config:
         from_attributes = True
