@@ -19,7 +19,7 @@ async def get_my_statistics(
         session: AsyncSession = Depends(get_session)
 ):
     """
-    Get comprehensive statistics for the current user
+    Get comprehensive statistics for the current users
 
     Returns:
     - Total reviews and average rating
