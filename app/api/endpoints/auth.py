@@ -3,6 +3,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.email import send_verification_email, send_password_reset_email
 from app.db.session import get_session
 from app.schemas.password_reset import PasswordResetResponse, PasswordResetRequest, PasswordResetConfirm
@@ -86,7 +87,7 @@ async def register(
             email=user.email,
             username=user.username,
             verification_token=verification_token,
-            frontend_url=os.getenv("FRONTEND_URL", "http://localhost:5173")
+            frontend_url=settings.FRONTEND_URL
         )
     except Exception as e:
         print(f"Failed to send verification email: {e}")
@@ -222,7 +223,7 @@ async def request_password_reset(
             email=user.email,
             username=user.username,
             reset_token=reset_token,
-            frontend_url=os.getenv("FRONTEND_URL", "http://localhost:5173")
+            frontend_url=settings.FRONTEND_URL
         )
     except Exception as e:
         print(f"❌ Erreur envoi email: {e}")
