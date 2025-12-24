@@ -13,7 +13,7 @@ build:docker:
   script:
     - |
       echo "🏗️ Construction de l'image Docker..."
-      docker build -t $DOCKER_IMAGE -t $DOCKER_IMAGE_LATEST .
+      docker build --no-cache -t $DOCKER_IMAGE -t $DOCKER_IMAGE_LATEST .
       
       echo "📤 Push de l'image vers les registres..."
       docker push $DOCKER_IMAGE
