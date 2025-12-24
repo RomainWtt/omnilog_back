@@ -136,8 +136,6 @@ async def update_challenge_progress_activity(
             challenge_id=membership.challenge_id
         )
 
-
-
 async def get_challenge_activities(
         session: AsyncSession,
         challenge_id: UUID

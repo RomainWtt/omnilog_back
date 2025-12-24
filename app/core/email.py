@@ -111,3 +111,111 @@ async def send_verification_email(
 
     await fast_mail.send_message(message)
     print(f"✅ Email de vérification envoyé à {email}")
+
+
+# Template HTML pour la réinitialisation de mot de passe
+PASSWORD_RESET_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+        }
+        .content {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 0 0 10px 10px;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔒 Omnilogue</h1>
+        <p>Réinitialisation de mot de passe</p>
+    </div>
+    <div class="content">
+        <p>Bonjour {{ username }},</p>
+        <p>Nous avons reçu une demande de réinitialisation de mot de passe pour votre compte.</p>
+        <p style="text-align: center;">
+            <a href="{{ reset_url }}" class="button">Réinitialiser mon mot de passe</a>
+        </p>
+        <p>Ou copiez ce lien dans votre navigateur :</p>
+        <p style="word-break: break-all; color: #667eea;">{{ reset_url }}</p>
+
+        <div class="warning">
+            <strong>⚠️ Important :</strong>
+            <ul>
+                <li>Ce lien expirera dans <strong>1 heure</strong></li>
+                <li>Si vous n'avez pas demandé cette réinitialisation, ignorez cet email</li>
+                <li>Votre mot de passe actuel reste inchangé jusqu'à ce que vous en définissiez un nouveau</li>
+            </ul>
+        </div>
+
+        <p>Pour des raisons de sécurité, ne partagez jamais ce lien avec qui que ce soit.</p>
+    </div>
+    <div class="footer">
+        <p>© 2024 Omnilogue - Votre plateforme de suivi de médias</p>
+    </div>
+</body>
+</html>
+"""
+
+async def send_password_reset_email(
+        email: EmailStr,
+        username: str,
+        reset_token: str,
+        frontend_url: str
+):
+    """Envoie un email de réinitialisation de mot de passe"""
+    reset_url = f"{frontend_url}/reset-password/{reset_token}"
+
+    template = Template(PASSWORD_RESET_TEMPLATE)
+    html_content = template.render(
+        username=username,
+        reset_url=reset_url
+    )
+
+    message = MessageSchema(
+        subject="🔒 Réinitialisation de votre mot de passe - Omnilogue",
+        recipients=[email],
+        body=html_content,
+        subtype="html"
+    )
+
+    await fast_mail.send_message(message)
+    print(f"✅ Email de réinitialisation envoyé à {email}")

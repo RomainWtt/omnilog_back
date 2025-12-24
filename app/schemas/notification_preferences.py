@@ -11,7 +11,7 @@ class NotificationPreferences(BaseModel):
     friend_declined: bool = Field(default=True, description="Recevoir les notifications de refus")
     favorite_added: bool = Field(default=True, description="Recevoir les notifications de favoris d'amis")
     review_posted: bool = Field(default=True, description="Recevoir les notifications de reviews d'amis")
-    challenge: bool = Field(default=True, description="Recevoir les notifications de challenges")
+    challenge_invitation: bool = Field(default=True, description="Recevoir les notifications d'invitation de challenges")
 
 
 class NotificationPreferencesUpdate(BaseModel):
@@ -21,7 +21,7 @@ class NotificationPreferencesUpdate(BaseModel):
     friend_declined: Optional[bool] = None
     favorite_added: Optional[bool] = None
     review_posted: Optional[bool] = None
-    challenge: Optional[bool] = None
+    challenge_invitation: Optional[bool] = None
 
 
 class NotificationPreferencesRead(BaseModel):
