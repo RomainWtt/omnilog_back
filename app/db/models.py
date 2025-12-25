@@ -131,6 +131,7 @@ class Genre(SQLModel, table=True):
     id: int = Field(primary_key=True)
     media_type: MediaType = Field(primary_key=True)
     name: str = Field(max_length=100)
+    color: str = Field(max_length=7, default="#808080")
 
     # Removed relationship - handle manually in code
 
