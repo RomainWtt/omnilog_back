@@ -295,3 +295,14 @@ async def verify_reset_token(
     return PasswordResetResponse(
         message="Token valide."
     )
+
+@router.get("/debug/frontend-url")
+async def debug_frontend_url():
+    """Endpoint de debug pour vérifier FRONTEND_URL"""
+    return {
+        "frontend_url_from_settings": settings.FRONTEND_URL,
+        "frontend_url_from_env": os.getenv("FRONTEND_URL", "NOT_SET"),
+        "all_settings": {
+            "FRONTEND_URL": settings.FRONTEND_URL,
+        }
+    }
