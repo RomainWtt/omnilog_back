@@ -306,3 +306,39 @@ async def debug_frontend_url():
             "FRONTEND_URL": settings.FRONTEND_URL,
         }
     }
+
+
+@router.get("/debug/test-email")
+async def test_email_sending():
+    """Endpoint de debug pour tester l'envoi d'email"""
+    try:
+        print(f"🧪 Test d'envoi d'email...")
+        print(f"📬 MAIL_SERVER: {settings.MAIL_SERVER}")
+        print(f"📮 MAIL_PORT: {settings.MAIL_PORT}")
+        print(f"👤 MAIL_USERNAME: {settings.MAIL_USERNAME}")
+        print(f"📧 MAIL_FROM: {settings.MAIL_FROM}")
+
+        await send_verification_email(
+            email="pechico007@gmail.com",  # Mets ton vrai email
+            username="Test User",
+            verification_token="test-token-123",
+            frontend_url=settings.FRONTEND_URL
+        )
+
+        return {
+            "status": "success",
+            "message": "Email envoyé avec succès",
+            "config": {
+                "server": settings.MAIL_SERVER,
+                "port": settings.MAIL_PORT,
+                "from": settings.MAIL_FROM
+            }
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "error": str(e),
+            "type": type(e).__name__,
+            "traceback": traceback.format_exc()
+        }
