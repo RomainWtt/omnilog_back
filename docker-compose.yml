@@ -36,19 +36,17 @@ services:
       retries: 5
 
   api:
-    # ✅ PROD: Use the image built by GitLab CI
     image: git-registry.helmo.be/q220059/omnilog-backend:main
     container_name: omnilog_api
-    # ✅ PROD: Run directly (no --reload)
     command: uvicorn app.main:app --host 0.0.0.0 --port 8008
     ports:
       - "8008:8008"
+    env_file:
+      - .env  # ✅ AJOUTE CETTE LIGNE - Charge TOUTES les variables
     environment:
+      # Override uniquement les variables qui doivent être différentes du .env
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=${SECRET_KEY}
-      - DEBUG=True
-      - TMDB_API_KEY=${TMDB_API_KEY}
     networks:
       - caddy
     depends_on:
