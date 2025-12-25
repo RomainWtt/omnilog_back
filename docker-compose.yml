@@ -37,7 +37,7 @@ services:
 
   api:
     # ✅ PROD: Use the image built by GitLab CI
-    image: git-registry.helmo.be/q220059/omnilog-backend:latest
+    image: git-registry.helmo.be/q220059/omnilog-backend:main
     container_name: omnilog_api
     # ✅ PROD: Run directly (no --reload)
     command: uvicorn app.main:app --host 0.0.0.0 --port 8008
