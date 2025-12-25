@@ -59,13 +59,22 @@ class Settings(BaseSettings):
     R2_BUCKET_NAME: str = "omnilog"
     R2_PUBLIC_URL: str = ""
 
-    # CORS
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173", "https://omnilog.inscriptionrlt.be"]
-
-    # Redis size (a voir)
+    # Redis size
     TOP_MOVIES_CACHE_SIZE: int = 500
 
     GOOGLE_API_KEY: str = "dummy"
+
+    # ✅ CORS - Property dynamique basée sur DEBUG
+    @property
+    def CORS_ORIGINS(self) -> list[str]:
+        """Origines CORS (utilisées uniquement en DEBUG)"""
+        if self.DEBUG:
+            return [
+                "http://localhost:3000",
+                "http://localhost:5173",
+                "http://localhost:8080"
+            ]
+        return []  # En prod, géré par Caddy
 
     model_config = SettingsConfigDict(
         env_file=".env",
