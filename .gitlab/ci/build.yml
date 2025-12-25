@@ -1,8 +1,9 @@
 build:docker:
   stage: build
+  extends: .develop-and-main
   image: docker:29
   variables:
-    DOCKER_HOST: "unix:///var/run/docker.sock" 
+    DOCKER_HOST: "unix:///var/run/docker.sock"
     DOCKER_TLS_CERTDIR: ""
   before_script:
     - echo "🐳 Connecting to Host Docker..."
@@ -13,11 +14,15 @@ build:docker:
   script:
     - |
       echo "🏗️ Construction de l'image Docker..."
-      docker build --no-cache -t $DOCKER_IMAGE -t $DOCKER_IMAGE_LATEST .
-      
-      echo "📤 Push de l'image vers les registres..."
+      docker build --no-cache -t $DOCKER_IMAGE .
       docker push $DOCKER_IMAGE
-      docker push $DOCKER_IMAGE_LATEST
+      
+      # ✅ Ne tagger :latest QUE si on est sur main
+      if [ "$CI_COMMIT_BRANCH" = "main" ]; then
+        echo "📦 Tag :latest (branche main)"
+        docker tag $DOCKER_IMAGE $DOCKER_IMAGE_LATEST
+        docker push $DOCKER_IMAGE_LATEST
+      fi
       
       echo "build_status=success" >> $PIPELINE_STATUS_FILE
       echo "✅ Image Docker construite et poussée avec succès"
