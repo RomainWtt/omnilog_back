@@ -9,19 +9,17 @@ from typing import Annotated, Optional
 
 from app.db.session import get_session
 from app.core.oauth import oauth
+from app.services.redis_service import redis_service  # ✅ UTILISER TON SERVICE
 from app.core.security import create_access_token, create_refresh_token
 from app.schemas.token import Token
 from app.schemas.oauth import OAuthCallbackRequest
 from app.crud import crud_user, crud_oauth
 from app.core.config import settings
-from app.services.email_verification import EmailVerificationService  # ✅ AJOUTÉ
+from app.services.email_verification import EmailVerificationService
 import secrets
 import httpx
 
 router = APIRouter()
-
-# Store pour les states OAuth (en production, utiliser Redis)
-oauth_states = {}
 
 
 @router.get(
@@ -44,7 +42,9 @@ async def google_login(request: Request):
     """
     # Générer un state unique pour la sécurité CSRF
     state = secrets.token_urlsafe(32)
-    oauth_states[state] = True
+
+    # ✅ Stocker dans Redis avec expiration de 10 minutes (600 secondes)
+    await redis_service.set(f"oauth_state:{state}", "true", ttl=600)
 
     # Construire l'URL de redirection
     redirect_uri = request.url_for('google_callback_get')
@@ -141,16 +141,18 @@ async def google_callback_post(
     - **refresh_token**: JWT refresh token for renewing access
     - **token_type**: Always "bearer"
     """
-    # Vérifier le state pour la sécurité CSRF
-    if callback_data.state and callback_data.state not in oauth_states:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid state parameter"
-        )
-
-    # Nettoyer le state
+    # ✅ Vérifier le state dans Redis
     if callback_data.state:
-        oauth_states.pop(callback_data.state, None)
+        state_exists = await redis_service.exists(f"oauth_state:{callback_data.state}")
+
+        if not state_exists:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired state parameter"
+            )
+
+        # Supprimer le state après utilisation
+        await redis_service.delete(f"oauth_state:{callback_data.state}")
 
     try:
         # Échanger le code contre un token
@@ -228,7 +230,7 @@ async def google_callback_post(
                 google_id=google_id
             )
 
-            # ✅ AJOUTÉ : Vérifier l'email automatiquement si pas déjà fait
+            # Vérifier l'email automatiquement si pas déjà fait
             if not user.email_verified:
                 EmailVerificationService.mark_as_verified_by_oauth(user, "google")
                 session.add(user)
@@ -258,13 +260,13 @@ async def google_callback_post(
                 avatar_url=picture
             )
 
-            # ✅ AJOUTÉ : Marquer l'email comme vérifié pour les nouveaux utilisateurs OAuth
+            # Marquer l'email comme vérifié pour les nouveaux utilisateurs OAuth
             EmailVerificationService.mark_as_verified_by_oauth(user, "google")
             session.add(user)
             await session.commit()
             await session.refresh(user)
     else:
-        # ✅ AJOUTÉ : Vérifier l'email même pour les utilisateurs existants OAuth
+        # Vérifier l'email même pour les utilisateurs existants OAuth
         if not user.email_verified:
             EmailVerificationService.mark_as_verified_by_oauth(user, "google")
             session.add(user)
