@@ -46,14 +46,27 @@ app.add_middleware(
     https_only=False  # True en production
 )
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# ❌ CORS - Désactivé car géré par Caddy
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=settings.CORS_ORIGINS,
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
+# CORS - Actif uniquement en mode DEBUG (dev local sans Caddy)
+if settings.DEBUG and settings.CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    print("⚠️  CORS middleware actif (mode DEBUG)")
+else:
+    print("✅ CORS géré par Caddy (production)")
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
