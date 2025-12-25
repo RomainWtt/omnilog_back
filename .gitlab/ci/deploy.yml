@@ -41,7 +41,7 @@ deploy:production:
         docker compose pull api &&
         
         echo '🔄 Redémarrage du conteneur...' &&
-        docker compose up -d api &&
+        docker compose up -d --force-recreate api && 
         
         echo '📊 Migration de la base de données...' &&
         docker compose exec -T api alembic upgrade head &&
