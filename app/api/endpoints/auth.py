@@ -342,3 +342,17 @@ async def test_email_sending():
             "type": type(e).__name__,
             "traceback": traceback.format_exc()
         }
+
+@router.get("/debug/all-settings")
+async def debug_all_settings():
+    """Vérifie TOUTES les variables chargées par Pydantic"""
+    return {
+        "FRONTEND_URL": settings.FRONTEND_URL,
+        "TMDB_API_KEY": settings.TMDB_API_KEY[:20] + "...",  # Tronqué
+        "MAIL_SERVER": settings.MAIL_SERVER,
+        "MAIL_USERNAME": settings.MAIL_USERNAME,
+        "MAIL_PORT": settings.MAIL_PORT,
+        "DEBUG": settings.DEBUG,
+        "SECRET_KEY": settings.SECRET_KEY[:10] + "...",
+        "DATABASE_URL": settings.DATABASE_URL[:40] + "...",
+    }
