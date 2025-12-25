@@ -49,8 +49,6 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - DEBUG=True
       - TMDB_API_KEY=${TMDB_API_KEY}
-    volumes:
-      - .:/app
     networks:
       - caddy
     depends_on:
