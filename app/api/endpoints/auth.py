@@ -298,7 +298,7 @@ async def verify_reset_token(
 
 @router.get("/debug/frontend-url")
 async def debug_frontend_url():
-    """Endpoint de debug pour vérifier FRONTEND_URL lol"""
+    """Endpoint de debug pour vérifier FRONTEND_URL wtf"""
     return {
         "frontend_url_from_settings": settings.FRONTEND_URL,
         "frontend_url_from_env": os.getenv("FRONTEND_URL", "NOT_SET"),
