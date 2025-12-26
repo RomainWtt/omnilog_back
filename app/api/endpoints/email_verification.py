@@ -24,11 +24,16 @@ router = APIRouter()
 FRONTEND_URL = settings.FRONTEND_URL
 
 
-@router.post("/send-verification", response_model=EmailVerificationResponse)
+@router.post(
+    "/send-verification",
+    response_model=EmailVerificationResponse,
+    summary="Envoyer un email de vérification"
+)
 async def send_verification(
         current_user: User = Depends(get_current_user),
         session: AsyncSession = Depends(get_session)
 ):
+    """Envoie un email de vérification à l'utilisateur connecté avec protection anti-spam."""
     if current_user.email_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -61,11 +66,16 @@ async def send_verification(
     )
 
 
-@router.post("/verify", response_model=EmailVerificationSuccess)
+@router.post(
+    "/verify",
+    response_model=EmailVerificationSuccess,
+    summary="Vérifier l'email avec token"
+)
 async def verify_email(
         data: EmailVerificationConfirm,
         session: AsyncSession = Depends(get_session)
 ):
+    """Vérifie et active l'email d'un utilisateur à partir du token de vérification."""
     user = await crud_user.get_user_by_verification_token(session, data.token)
 
     if not user:
@@ -91,6 +101,7 @@ async def verify_email(
         email=user.email
     )
 
+
 @router.post(
     "/resend-verification",
     response_model=ResendVerificationResponse,
@@ -101,7 +112,7 @@ async def resend_verification(
         data: ResendVerificationRequest,
         session: AsyncSession = Depends(get_session)
 ):
-    """Renvoie un email de vérification (sans authentification requise)"""
+    """Renvoie un email de vérification sans authentification requise (pour les utilisateurs non connectés)."""
     user = await crud_user.get_user_by_email(session, data.email)
 
     if not user:

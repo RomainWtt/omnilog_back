@@ -27,13 +27,18 @@ from app.services.notification_service import notification_service
 router = APIRouter()
 
 
-@router.get("/media/{media_id}", response_model=ReviewsPaginated)
+@router.get(
+    "/media/{media_id}",
+    response_model=ReviewsPaginated,
+    summary="Récupérer les commentaires d'un média"
+)
 async def get_comments_for_media(
         media_id: UUID,
         page: int = Query(1, ge=1, description="Page number"),
         session: AsyncSession = Depends(get_session),
         current_user: Optional[User] = Depends(get_optional_current_user),
 ):
+    """Récupère les reviews d'un média avec pagination et statut d'amitié pour chaque commentateur."""
     PAGE_SIZE = 20
     offset = (page - 1) * PAGE_SIZE
 
@@ -88,7 +93,11 @@ async def get_comments_for_media(
     }
 
 
-@router.get("/media/{media_id}/average", response_model=MediaAverageRating)
+@router.get(
+    "/media/{media_id}/average",
+    response_model=MediaAverageRating,
+    summary="Récupérer la note moyenne d'un média"
+)
 async def get_media_average_rating(
         media_id: UUID,
         session: AsyncSession = Depends(get_session),
@@ -128,7 +137,11 @@ async def get_media_average_rating(
     }
 
 
-@router.get("/media/{media_id}/user", response_model=ReviewRead)
+@router.get(
+    "/media/{media_id}/user",
+    response_model=ReviewRead,
+    summary="Récupérer ma review pour un média"
+)
 async def get_current_user_review_for_media(
         media_id: UUID,
         session: AsyncSession = Depends(get_session),
@@ -158,7 +171,11 @@ async def get_current_user_review_for_media(
 # USER-RELATED ROUTES
 # ============================================
 
-@router.get("/user", response_model=ReviewsPaginated)
+@router.get(
+    "/user",
+    response_model=ReviewsPaginated,
+    summary="Récupérer les reviews d'un utilisateur"
+)
 async def get_user_reviews(
         user_id: Optional[str] = Query(None,
                                        description="ID de l'utilisateur (si non fourni, utilise l'utilisateur connecté)"),
@@ -170,6 +187,7 @@ async def get_user_reviews(
         session: AsyncSession = Depends(get_session),
         current_user: User = Depends(get_optional_current_user)
 ):
+    """Récupère les reviews d'un utilisateur avec filtres (note, recherche) et tri avec pagination."""
     # Détermine l'ID utilisateur cible
     if user_id is not None:
         target_user_id = user_id
@@ -247,7 +265,11 @@ async def get_user_reviews(
     }
 
 
-@router.get("/recent", response_model=list[ReviewRead])
+@router.get(
+    "/recent",
+    response_model=list[ReviewRead],
+    summary="Récupérer les reviews récentes"
+)
 async def get_recent_reviews(
         limit: int = Query(10, ge=1, le=50, description="Number of reviews to return"),
         session: AsyncSession = Depends(get_session),
@@ -266,7 +288,11 @@ async def get_recent_reviews(
     return [ReviewRead.model_validate(review) for review in reviews]
 
 
-@router.get("/review/search", response_model=list[ReviewRead])
+@router.get(
+    "/review/search",
+    response_model=list[ReviewRead],
+    summary="Rechercher des reviews (admin)"
+)
 async def admin_search_reviews(
         query: str = Query(..., min_length=1, description="Search query with username, media title, content"),
         limit: int = Query(20, ge=1, le=100),
@@ -274,6 +300,7 @@ async def admin_search_reviews(
         session: AsyncSession = Depends(get_session),
         is_reported: Optional[bool] = None
 ):
+    """Recherche globale de reviews par username, titre de média ou contenu avec filtre optionnel signalées."""
     return await search_reviews_by_query(query=query, session=session, limit=limit, offset=offset,
                                          is_reported=is_reported)
 
@@ -282,7 +309,12 @@ async def admin_search_reviews(
 # REVIEW CRUD ROUTES (generic {review_id} must come last)
 # ============================================
 
-@router.post("/", response_model=ReviewRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=ReviewRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Créer une review"
+)
 async def create_review(
         review_data: ReviewCreate,
         session: AsyncSession = Depends(get_session),
@@ -348,15 +380,17 @@ async def create_review(
     return ReviewRead.model_validate(review)
 
 
-@router.get("/{review_id}", response_model=ReviewRead)
+@router.get(
+    "/{review_id}",
+    response_model=ReviewRead,
+    summary="Récupérer une review par ID"
+)
 async def get_review(
         review_id: UUID,
         session: AsyncSession = Depends(get_session),
         current_user: User = Depends(get_current_user)
 ):
-    """
-    Get a specific review by ID.
-    """
+    """Récupère une review spécifique par son identifiant."""
     review = await crud_review.get_review_by_id(session, review_id)
 
     if not review:
@@ -368,7 +402,11 @@ async def get_review(
     return ReviewRead.model_validate(review)
 
 
-@router.put("/{review_id}", response_model=ReviewRead)
+@router.put(
+    "/{review_id}",
+    response_model=ReviewRead,
+    summary="Mettre à jour une review"
+)
 async def update_review(
         review_id: UUID,
         review_data: ReviewUpdate,
@@ -405,7 +443,11 @@ async def update_review(
     return ReviewRead.model_validate(updated_review)
 
 
-@router.delete("/{review_id}", response_model=ReviewRead)
+@router.delete(
+    "/{review_id}",
+    response_model=ReviewRead,
+    summary="Supprimer une review"
+)
 async def delete_review(
         review_id: UUID,
         session: AsyncSession = Depends(get_session),
@@ -437,7 +479,11 @@ async def delete_review(
     return ReviewRead.model_validate(deleted_review)
 
 
-@router.patch("/{review_id}/hide", response_model=ReviewRead)
+@router.patch(
+    "/{review_id}/hide",
+    response_model=ReviewRead,
+    summary="Masquer une review"
+)
 async def hide_review(
         review_id: UUID,
         session: AsyncSession = Depends(get_session),
@@ -468,7 +514,11 @@ async def hide_review(
     return ReviewRead.model_validate(hidden_review)
 
 
-@router.patch("/{review_id}/unhide", response_model=ReviewRead)
+@router.patch(
+    "/{review_id}/unhide",
+    response_model=ReviewRead,
+    summary="Rendre visible une review masquée"
+)
 async def unhide_review(
         review_id: UUID,
         session: AsyncSession = Depends(get_session),

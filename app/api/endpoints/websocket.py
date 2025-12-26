@@ -6,7 +6,8 @@ from uuid import UUID
 from app.websocket.manager import manager
 from app.db.session import get_session
 from app.crud import crud_user
-from app.core.security import decode_token  # ✅ Utilise la bonne fonction
+from app.core.security import decode_token
+
 router = APIRouter()
 
 
@@ -16,7 +17,12 @@ async def websocket_endpoint(
         session: AsyncSession = Depends(get_session)
 ):
     """
-    WebSocket endpoint pour les notifications en temps réel
+    Endpoint WebSocket pour les notifications en temps réel.
+
+    Requiert une authentification JWT envoyée après connexion au format:
+    {"type": "auth", "token": "votre_jwt_token"}
+
+    Supporte les messages ping/pong pour maintenir la connexion active.
     """
     await websocket.accept()
     user_id = None
@@ -36,7 +42,7 @@ async def websocket_endpoint(
 
         # Décoder et valider le token
         try:
-            payload = decode_token(token)  # ✅ Utilise decode_token
+            payload = decode_token(token)
             user_id = UUID(payload.get("sub"))
 
             if not user_id:

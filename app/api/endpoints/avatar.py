@@ -14,7 +14,11 @@ from app.schemas.user import UserRead
 router = APIRouter()
 
 
-@router.post("/avatar", response_model=UserRead)
+@router.post(
+    "/avatar",
+    response_model=UserRead,
+    summary="Télécharger un avatar"
+)
 async def upload_avatar(
     file: UploadFile = File(..., description="Image file (PNG, JPG, GIF, WEBP, max 5MB)"),
     current_user: User = Depends(get_current_active_user),
@@ -29,7 +33,7 @@ async def upload_avatar(
     """
     # Read file content
     content = await file.read()
-    
+
     # Validate
     is_valid, message = r2_storage.validate_file(file.filename or "", len(content))
     if not is_valid:
@@ -37,11 +41,11 @@ async def upload_avatar(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=message
         )
-    
+
     # Delete old avatar if exists
     if current_user.avatar_url:
         await r2_storage.delete_avatar(current_user.avatar_url)
-    
+
     # Upload new avatar
     success, result = await r2_storage.upload_avatar(
         user_id=current_user.id,
@@ -49,37 +53,41 @@ async def upload_avatar(
         original_filename=file.filename or "avatar.jpg",
         content_type=file.content_type or "image/jpeg"
     )
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=result
         )
-    
+
     # Update user with new avatar URL
     updated_user = await crud_user.update_user(
         session=session,
         user_id=current_user.id,
         avatar_url=result
     )
-    
+
     return updated_user
 
 
-@router.delete("/avatar", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/avatar",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Supprimer l'avatar"
+)
 async def delete_avatar(
     current_user: User = Depends(get_current_active_user),
     session: AsyncSession = Depends(get_session)
 ):
-    """Delete current user's avatar"""
+    """Supprime l'avatar de l'utilisateur connecté."""
     if current_user.avatar_url:
         await r2_storage.delete_avatar(current_user.avatar_url)
-        
+
         await crud_user.update_user(
             session=session,
             user_id=current_user.id,
-            allow_none=True,  # AJOUTER CE PARAMÈTRE
+            allow_none=True,
             avatar_url=None
         )
-    
+
     return None

@@ -15,12 +15,16 @@ from datetime import datetime
 
 from app.services.email_verification import EmailVerificationService
 from app.services.password_reset import PasswordResetService
+
 router = APIRouter()
 
 
-# app/api/v1/endpoints/auth.py
-
-@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=UserRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Créer un nouveau compte utilisateur"
+)
 async def register(
         user_data: UserCreate,
         session: AsyncSession = Depends(get_session)
@@ -95,10 +99,14 @@ async def register(
     return user
 
 
-@router.post("/login", response_model=Token)
+@router.post(
+    "/login",
+    response_model=Token,
+    summary="Se connecter avec identifiants"
+)
 async def login(
-    credentials: LoginRequest,
-    session: AsyncSession = Depends(get_session)
+        credentials: LoginRequest,
+        session: AsyncSession = Depends(get_session)
 ):
     """
     Login with email/username and password
@@ -110,18 +118,18 @@ async def login(
         identifier=credentials.identifier,
         password=credentials.password
     )
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username/email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     # Create tokens
     access_token = create_access_token(data={"sub": str(user.id)})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
-    
+
     return Token(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -129,30 +137,32 @@ async def login(
     )
 
 
-@router.post("/refresh", response_model=Token)
+@router.post(
+    "/refresh",
+    response_model=Token,
+    summary="Rafraîchir le token d'accès"
+)
 async def refresh_token(
-    token_data: RefreshTokenRequest,
-    session: AsyncSession = Depends(get_session)
+        token_data: RefreshTokenRequest,
+        session: AsyncSession = Depends(get_session)
 ):
-    """
-    Refresh access token using refresh token
-    """
+    """Génère un nouveau token d'accès à partir d'un refresh token valide."""
     try:
         payload = decode_token(token_data.refresh_token)
-        
+
         if payload.get("type") != "refresh":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token type"
             )
-        
+
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token"
             )
-        
+
         from uuid import UUID
         user = await crud_user.get_user_by_id(session, UUID(user_id))
         if not user or not user.is_active:
@@ -160,17 +170,17 @@ async def refresh_token(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found or inactive"
             )
-        
+
         # Create new tokens
         access_token = create_access_token(data={"sub": user_id})
         new_refresh_token = create_refresh_token(data={"sub": user_id})
-        
+
         return Token(
             access_token=access_token,
             refresh_token=new_refresh_token,
             token_type="bearer"
         )
-    
+
     except HTTPException:
         raise
     except Exception:
@@ -180,7 +190,11 @@ async def refresh_token(
         )
 
 
-@router.post("/password-reset/request", response_model=PasswordResetResponse)
+@router.post(
+    "/password-reset/request",
+    response_model=PasswordResetResponse,
+    summary="Demander une réinitialisation de mot de passe"
+)
 async def request_password_reset(
         request_data: PasswordResetRequest,
         session: AsyncSession = Depends(get_session)
@@ -233,7 +247,11 @@ async def request_password_reset(
     )
 
 
-@router.post("/password-reset/confirm", response_model=PasswordResetResponse)
+@router.post(
+    "/password-reset/confirm",
+    response_model=PasswordResetResponse,
+    summary="Confirmer la réinitialisation du mot de passe"
+)
 async def confirm_password_reset(
         confirm_data: PasswordResetConfirm,
         session: AsyncSession = Depends(get_session)
@@ -275,7 +293,11 @@ async def confirm_password_reset(
     )
 
 
-@router.get("/password-reset/verify/{token}", response_model=PasswordResetResponse)
+@router.get(
+    "/password-reset/verify/{token}",
+    response_model=PasswordResetResponse,
+    summary="Vérifier la validité d'un token de réinitialisation"
+)
 async def verify_reset_token(
         token: str,
         session: AsyncSession = Depends(get_session)
@@ -296,9 +318,13 @@ async def verify_reset_token(
         message="Token valide."
     )
 
-@router.get("/debug/frontend-url")
+
+@router.get(
+    "/debug/frontend-url",
+    summary="Vérifier la configuration FRONTEND_URL"
+)
 async def debug_frontend_url():
-    """Endpoint de debug pour vérifier FRONTEND_URL wtf"""
+    """Endpoint de debug pour vérifier la valeur de FRONTEND_URL chargée."""
     return {
         "frontend_url_from_settings": settings.FRONTEND_URL,
         "frontend_url_from_env": os.getenv("FRONTEND_URL", "NOT_SET"),
@@ -308,9 +334,12 @@ async def debug_frontend_url():
     }
 
 
-@router.get("/debug/test-email")
+@router.get(
+    "/debug/test-email",
+    summary="Tester l'envoi d'email"
+)
 async def test_email_sending():
-    """Endpoint de debug pour tester l'envoi d'email"""
+    """Endpoint de debug pour tester la configuration et l'envoi d'emails."""
     try:
         print(f"🧪 Test d'envoi d'email...")
         print(f"📬 MAIL_SERVER: {settings.MAIL_SERVER}")
@@ -319,7 +348,7 @@ async def test_email_sending():
         print(f"📧 MAIL_FROM: {settings.MAIL_FROM}")
 
         await send_verification_email(
-            email="pechico007@gmail.com",  # Mets ton vrai email
+            email="pechico007@gmail.com",
             username="Test User",
             verification_token="test-token-123",
             frontend_url=settings.FRONTEND_URL
@@ -343,12 +372,16 @@ async def test_email_sending():
             "traceback": traceback.format_exc()
         }
 
-@router.get("/debug/all-settings")
+
+@router.get(
+    "/debug/all-settings",
+    summary="Vérifier toutes les variables de configuration"
+)
 async def debug_all_settings():
-    """Vérifie TOUTES les variables chargées par Pydantic"""
+    """Affiche toutes les variables de configuration chargées par Pydantic Settings."""
     return {
         "FRONTEND_URL": settings.FRONTEND_URL,
-        "TMDB_API_KEY": settings.TMDB_API_KEY[:20] + "...",  # Tronqué
+        "TMDB_API_KEY": settings.TMDB_API_KEY[:20] + "...",
         "MAIL_SERVER": settings.MAIL_SERVER,
         "MAIL_USERNAME": settings.MAIL_USERNAME,
         "MAIL_PORT": settings.MAIL_PORT,

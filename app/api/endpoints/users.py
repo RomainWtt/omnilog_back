@@ -13,13 +13,18 @@ from app.core.security import verify_password
 router = APIRouter()
 
 
-@router.get("/search", response_model=list[UserPublic])
+@router.get(
+    "/search",
+    response_model=list[UserPublic],
+    summary="Rechercher de nouveaux amis"
+)
 async def search_new_friends(
         q: str = Query(..., min_length=3, description="Pseudo à rechercher"),
         page: int = Query(1, ge=1, description="Page number"),
         session: AsyncSession = Depends(get_session),
         current_user: User = Depends(get_current_active_user)
 ):
+    """Recherche des utilisateurs par pseudo pour ajouter de nouveaux amis avec pagination."""
     PAGE_SIZE = 20
     offset = (page - 1) * PAGE_SIZE
 
@@ -43,12 +48,17 @@ async def search_new_friends(
     ]
 
 
-@router.get("/admin/search", response_model=list[UserRead])
+@router.get(
+    "/admin/search",
+    response_model=list[UserRead],
+    summary="Rechercher des utilisateurs (admin)"
+)
 async def search_user_admin(
         query: str,
         is_active: bool | None = None,
         session: AsyncSession = Depends(get_session),
 ):
+    """Recherche globale d'utilisateurs avec filtre optionnel sur le statut actif (réservé admin)."""
     return await crud_user.search_users_by_query(
         query=query,
         session=session,
@@ -56,17 +66,23 @@ async def search_user_admin(
     )
 
 
-@router.get("/me", response_model=UserRead)
+@router.get(
+    "/me",
+    response_model=UserRead,
+    summary="Récupérer mon profil"
+)
 async def get_current_user_profile(
         current_user: User = Depends(get_current_active_user)
 ):
-    """
-    Get current user's profile
-    """
+    """Récupère le profil complet de l'utilisateur connecté."""
     return current_user
 
 
-@router.put("/me", response_model=UserRead)
+@router.put(
+    "/me",
+    response_model=UserRead,
+    summary="Mettre à jour mon profil"
+)
 async def update_current_user_profile(
         user_update: UserUpdate,
         current_user: User = Depends(get_current_active_user),
@@ -135,15 +151,17 @@ async def update_current_user_profile(
     return updated_user
 
 
-@router.get("/{user_id}", response_model=UserPublic)
+@router.get(
+    "/{user_id}",
+    response_model=UserPublic,
+    summary="Récupérer un utilisateur par ID"
+)
 async def get_user_by_id(
         user_id: UUID,
         session: AsyncSession = Depends(get_session),
         current_user: User = Depends(get_current_active_user)
 ):
-    """
-    Get public information about a user by ID
-    """
+    """Récupère les informations publiques d'un utilisateur par son identifiant."""
     user = await crud_user.get_user_by_id(session, user_id)
 
     if not user:
@@ -161,15 +179,17 @@ async def get_user_by_id(
     return user
 
 
-@router.get("/username/{username}", response_model=UserPublic)
+@router.get(
+    "/username/{username}",
+    response_model=UserPublic,
+    summary="Récupérer un utilisateur par username"
+)
 async def get_user_by_username(
         username: str,
         session: AsyncSession = Depends(get_session),
         current_user: User = Depends(get_current_active_user)
 ):
-    """
-    Get public information about a user by username
-    """
+    """Récupère les informations publiques d'un utilisateur par son pseudo."""
     user = await crud_user.get_user_by_username(session, username)
 
     if not user:
@@ -187,12 +207,17 @@ async def get_user_by_username(
     return user
 
 
-@router.post("/{user_id}/deactivate", response_model=UserRead)
+@router.post(
+    "/{user_id}/deactivate",
+    response_model=UserRead,
+    summary="Désactiver un utilisateur (admin)"
+)
 async def deactivate_user(
         user_id: UUID,
         session: AsyncSession = Depends(get_session),
         admin_user: User = Depends(get_current_admin_user)
 ):
+    """Désactive un compte utilisateur (réservé admin)."""
     user = await crud_user.get_user_by_id(session, user_id)
 
     if not user:
@@ -205,15 +230,17 @@ async def deactivate_user(
     return deactivated_user
 
 
-@router.post("/{user_id}/activate", response_model=UserRead)
+@router.post(
+    "/{user_id}/activate",
+    response_model=UserRead,
+    summary="Activer un utilisateur (admin)"
+)
 async def activate_user(
         user_id: UUID,
         session: AsyncSession = Depends(get_session),
         admin_user: User = Depends(get_current_admin_user)
 ):
-    """
-    Activate a user account (Admin only)
-    """
+    """Active un compte utilisateur désactivé (réservé admin)."""
     user = await crud_user.get_user_by_id(session, user_id)
 
     if not user:
@@ -226,7 +253,11 @@ async def activate_user(
     return activated_user
 
 
-@router.get("/", response_model=list[UserRead])
+@router.get(
+    "/",
+    response_model=list[UserRead],
+    summary="Lister tous les utilisateurs"
+)
 async def get_all_users(
         skip: int = 0,
         limit: int = 100,
@@ -234,6 +265,7 @@ async def get_all_users(
         is_active: bool | None = None,
         session: AsyncSession = Depends(get_session)
 ):
+    """Récupère la liste de tous les utilisateurs avec filtres optionnels (recherche, statut actif) et pagination."""
     users = await crud_user.get_users_list(
         session=session,
         skip=skip,

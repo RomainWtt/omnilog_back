@@ -29,7 +29,7 @@ router = APIRouter()
 @router.get(
     "/",
     response_model=List[NotificationRead],
-    summary="Récupère les notifications de l'utilisateur"
+    summary="Récupérer les notifications"
 )
 async def get_notifications(
         limit: int = Query(20, ge=1, le=100, description="Nombre de notifications par page"),
@@ -38,7 +38,7 @@ async def get_notifications(
         current_user: UserRead = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session),
 ):
-    """Récupère les notifications de l'utilisateur authentifié avec pagination"""
+    """Récupère les notifications de l'utilisateur connecté avec pagination et filtre optionnel non lues."""
     notifications = await crud_notification.get_user_notifications(
         session,
         current_user.id,
@@ -52,13 +52,13 @@ async def get_notifications(
 @router.get(
     "/unread-count",
     response_model=dict,
-    summary="Compte les notifications non lues"
+    summary="Compter les notifications non lues"
 )
 async def get_unread_count(
         current_user: UserRead = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session),
 ):
-    """Retourne le nombre de notifications non lues"""
+    """Retourne le nombre de notifications non lues de l'utilisateur connecté."""
     count = await crud_notification.get_unread_count(session, current_user.id)
     return {"count": count}
 
@@ -66,14 +66,14 @@ async def get_unread_count(
 @router.put(
     "/{notification_id}/read",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Marque une notification comme lue"
+    summary="Marquer une notification comme lue"
 )
 async def mark_as_read(
         notification_id: UUID,
         current_user: UserRead = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session),
 ):
-    """Marque une notification comme lue"""
+    """Marque une notification spécifique comme lue."""
     success = await crud_notification.mark_notification_as_read(
         session, notification_id, current_user.id
     )
@@ -90,13 +90,13 @@ async def mark_as_read(
 @router.put(
     "/mark-all-read",
     response_model=dict,
-    summary="Marque toutes les notifications comme lues"
+    summary="Marquer toutes les notifications comme lues"
 )
 async def mark_all_read(
         current_user: UserRead = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session),
 ):
-    """Marque toutes les notifications comme lues"""
+    """Marque toutes les notifications de l'utilisateur connecté comme lues."""
     count = await crud_notification.mark_all_as_read(session, current_user.id)
     return {"marked_as_read": count}
 
@@ -104,14 +104,14 @@ async def mark_all_read(
 @router.delete(
     "/cleanup",
     response_model=dict,
-    summary="Supprime les notifications lues de plus de 30 jours"
+    summary="Nettoyer les anciennes notifications"
 )
 async def cleanup_old_notifications(
         days: int = Query(30, ge=1, le=365),
         current_user: UserRead = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session),
 ):
-    """Supprime les anciennes notifications lues"""
+    """Supprime les notifications lues de plus de X jours (par défaut 30 jours)."""
     count = await crud_notification.delete_old_notifications(
         session, current_user.id, days
     )
@@ -125,7 +125,7 @@ async def cleanup_old_notifications(
 @router.get(
     "/preferences",
     response_model=NotificationPreferencesRead,
-    summary="Récupère les préférences de notifications de l'utilisateur"
+    summary="Récupérer les préférences de notifications"
 )
 async def get_notification_preferences(
         current_user: UserRead = Depends(get_current_active_user),
@@ -174,7 +174,7 @@ async def get_notification_preferences(
 @router.put(
     "/preferences",
     response_model=NotificationPreferencesRead,
-    summary="Met à jour les préférences de notifications"
+    summary="Mettre à jour les préférences de notifications"
 )
 async def update_notification_preferences(
         preferences_update: NotificationPreferencesUpdate,
@@ -235,7 +235,7 @@ async def update_notification_preferences(
 @router.patch(
     "/preferences/reset",
     response_model=NotificationPreferencesRead,
-    summary="Réinitialise les préférences aux valeurs par défaut"
+    summary="Réinitialiser les préférences de notifications"
 )
 async def reset_notification_preferences(
         current_user: UserRead = Depends(get_current_active_user),
@@ -281,8 +281,11 @@ async def reset_notification_preferences(
         )
 
 
-
-@router.get("/challenge-invitation", response_model=List[NotificationRead],  summary="Récupère les notifications d'invitiation de l'utilisateur")
+@router.get(
+    "/challenge-invitation",
+    response_model=List[NotificationRead],
+    summary="Récupérer les invitations de challenges"
+)
 async def get_challenge_notifications(
     unread_only: bool = False,
     limit: int = 50,
@@ -290,6 +293,7 @@ async def get_challenge_notifications(
     current_user: UserRead = Depends(get_current_active_user),
     session: AsyncSession = Depends(get_session)
 ):
+    """Récupère les notifications d'invitation à des challenges avec filtre optionnel non lues."""
     notifications = await crud_notification.get_user_notifications_by_type(
         session=session,
         user_id=current_user.id,
@@ -301,12 +305,12 @@ async def get_challenge_notifications(
     return [NotificationRead.model_validate(n) for n in notifications]
 
 
-
 async def get_declined_friends_for_challenge(
     session: AsyncSession,
     challenge_id: UUID,
     friend_id: UUID | None = None
 ) -> list[Notification]:
+    """Récupère les notifications de refus d'invitation pour un challenge spécifique."""
     stmt = select(Notification).where(
         and_(
             Notification.notification_type == NotificationType.CHALLENGE_DECLINED,
