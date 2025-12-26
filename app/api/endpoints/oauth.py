@@ -288,3 +288,13 @@ async def google_callback_post(
         refresh_token=refresh_token,
         token_type="bearer"
     )
+
+@router.get("/debug/config")
+async def debug_config():
+    """Debug endpoint to check OAuth configuration"""
+    return {
+        "GOOGLE_CLIENT_ID": settings.GOOGLE_CLIENT_ID[:20] + "..." if settings.GOOGLE_CLIENT_ID else "NOT SET",
+        "GOOGLE_CLIENT_SECRET": "***" + settings.GOOGLE_CLIENT_SECRET[-4:] if settings.GOOGLE_CLIENT_SECRET else "NOT SET",
+        "GOOGLE_REDIRECT_URI": settings.GOOGLE_REDIRECT_URI,
+        "FRONTEND_URL": settings.FRONTEND_URL,
+    }
