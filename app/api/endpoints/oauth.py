@@ -350,3 +350,50 @@ async def debug_redis_state():
     debug_info["total_keys"] = len(all_oauth_keys)
 
     return debug_info
+
+
+@router.get("/debug/test-full-flow")
+async def debug_test_full_flow():
+    """Test complet du flow OAuth pour identifier le problème"""
+
+    results = {}
+
+    # 1. Tester la connexion Redis
+    results["redis_connected"] = redis_service._client is not None
+
+    # 2. Créer un state de test
+    test_state = secrets.token_urlsafe(32)
+    test_data = {"test": "value", "created_at": str(datetime.utcnow())}
+
+    set_result = await redis_service.set(f"oauth_state:{test_state}", test_data, ttl=600)
+    results["state_created"] = set_result
+
+    # 3. Vérifier immédiatement
+    get_result = await redis_service.get(f"oauth_state:{test_state}")
+    results["state_retrieved"] = get_result
+    results["state_matches"] = get_result == test_data
+
+    # 4. Tester exists
+    exists_result = await redis_service.exists(f"oauth_state:{test_state}")
+    results["state_exists"] = exists_result
+
+    # 5. Lister les clés
+    all_keys = []
+    if redis_service._client:
+        cursor = 0
+        while True:
+            cursor, batch = await redis_service._client.scan(cursor, match="oauth_*", count=100)
+            all_keys.extend(batch)
+            if cursor == 0:
+                break
+    results["all_oauth_keys"] = all_keys
+
+    # 6. Supprimer
+    delete_result = await redis_service.delete(f"oauth_state:{test_state}")
+    results["state_deleted"] = delete_result
+
+    # 7. Vérifier après suppression
+    after_delete = await redis_service.get(f"oauth_state:{test_state}")
+    results["state_after_delete"] = after_delete
+
+    return results
