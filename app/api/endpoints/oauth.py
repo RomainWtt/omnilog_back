@@ -11,7 +11,7 @@ from typing import Annotated, Optional
 
 from app.db.session import get_session
 from app.core.oauth import oauth
-from app.services.redis_service import redis_service  # ✅ UTILISER TON SERVICE
+from app.services.redis_service import redis_service
 from app.core.security import create_access_token, create_refresh_token
 from app.schemas.token import Token
 from app.schemas.oauth import OAuthCallbackRequest
@@ -45,21 +45,12 @@ async def google_login(request: Request):
     # Générer un state unique pour la sécurité CSRF
     state = secrets.token_urlsafe(32)
 
-    # ✅ Augmenter le TTL à 1 heure pour debug
-    success = await redis_service.set(f"oauth_state:{state}", "true", ttl=3600)
-
-    # ✅ Vérifier immédiatement
-    verify = await redis_service.get(f"oauth_state:{state}")
-
-    # ✅ Créer une clé de debug avec plus d'infos
-    debug_key = f"oauth_debug:{state}"
-    debug_data = {
+    # ✅ Stocker un objet au lieu d'une string
+    state_data = {
         "created_at": str(datetime.utcnow()),
-        "state": state,
-        "set_success": success,
-        "verify_result": verify
+        "valid": True
     }
-    await redis_service.set(debug_key, debug_data, ttl=3600)
+    await redis_service.set(f"oauth_state:{state}", state_data, ttl=600)
 
     redirect_uri = request.url_for('google_callback_get')
 
@@ -155,44 +146,19 @@ async def google_callback_post(
     - **refresh_token**: JWT refresh token for renewing access
     - **token_type**: Always "bearer"
     """
-
-    debug_info = {
-        "state_received": callback_data.state,
-        "redis_connected": redis_service._client is not None,
-    }
-
+    # Vérifier le state dans Redis
     if callback_data.state:
-        # Vérifier le state
-        state_value = await redis_service.get(f"oauth_state:{callback_data.state}")
-        debug_info["state_in_redis"] = state_value
+        state_data = await redis_service.get(f"oauth_state:{callback_data.state}")
 
-        # Récupérer les infos de debug
-        debug_data = await redis_service.get(f"oauth_debug:{callback_data.state}")
-        debug_info["debug_data"] = debug_data
-
-        # Lister TOUTES les clés oauth
-        all_keys = []
-        if redis_service._client:
-            cursor = 0
-            while True:
-                cursor, batch = await redis_service._client.scan(cursor, match="oauth_*", count=100)
-                all_keys.extend(batch)
-                if cursor == 0:
-                    break
-        debug_info["all_oauth_keys"] = all_keys
-
-        if not state_value:
+        # ✅ Vérifier que l'objet existe et est valide
+        if not state_data or not isinstance(state_data, dict) or not state_data.get("valid"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "error": "Invalid or expired state parameter",
-                    "debug": debug_info
-                }
+                detail="Invalid or expired state parameter"
             )
 
-        # Supprimer les clés
+        # Supprimer le state après utilisation
         await redis_service.delete(f"oauth_state:{callback_data.state}")
-        await redis_service.delete(f"oauth_debug:{callback_data.state}")
 
     try:
         # Échanger le code contre un token
@@ -322,78 +288,3 @@ async def google_callback_post(
         refresh_token=refresh_token,
         token_type="bearer"
     )
-
-
-@router.get("/debug/redis-state")
-async def debug_redis_state():
-    """Debug endpoint to check Redis state"""
-
-    debug_info = {
-        "redis_connected": redis_service._client is not None,
-        "redis_url": settings.REDIS_URL,
-    }
-
-    # Lister toutes les clés oauth_state
-    all_oauth_keys = []
-    if redis_service._client:
-        try:
-            cursor = 0
-            while True:
-                cursor, batch = await redis_service._client.scan(cursor, match="oauth_state:*", count=100)
-                all_oauth_keys.extend(batch)
-                if cursor == 0:
-                    break
-        except Exception as e:
-            debug_info["redis_scan_error"] = str(e)
-
-    debug_info["all_oauth_keys"] = all_oauth_keys
-    debug_info["total_keys"] = len(all_oauth_keys)
-
-    return debug_info
-
-
-@router.get("/debug/test-full-flow")
-async def debug_test_full_flow():
-    """Test complet du flow OAuth pour identifier le problème"""
-
-    results = {}
-
-    # 1. Tester la connexion Redis
-    results["redis_connected"] = redis_service._client is not None
-
-    # 2. Créer un state de test
-    test_state = secrets.token_urlsafe(32)
-    test_data = {"test": "value", "created_at": str(datetime.utcnow())}
-
-    set_result = await redis_service.set(f"oauth_state:{test_state}", test_data, ttl=600)
-    results["state_created"] = set_result
-
-    # 3. Vérifier immédiatement
-    get_result = await redis_service.get(f"oauth_state:{test_state}")
-    results["state_retrieved"] = get_result
-    results["state_matches"] = get_result == test_data
-
-    # 4. Tester exists
-    exists_result = await redis_service.exists(f"oauth_state:{test_state}")
-    results["state_exists"] = exists_result
-
-    # 5. Lister les clés
-    all_keys = []
-    if redis_service._client:
-        cursor = 0
-        while True:
-            cursor, batch = await redis_service._client.scan(cursor, match="oauth_*", count=100)
-            all_keys.extend(batch)
-            if cursor == 0:
-                break
-    results["all_oauth_keys"] = all_keys
-
-    # 6. Supprimer
-    delete_result = await redis_service.delete(f"oauth_state:{test_state}")
-    results["state_deleted"] = delete_result
-
-    # 7. Vérifier après suppression
-    after_delete = await redis_service.get(f"oauth_state:{test_state}")
-    results["state_after_delete"] = after_delete
-
-    return results
