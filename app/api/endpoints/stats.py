@@ -13,7 +13,12 @@ from app.schemas.stats import UserStatsRead
 
 router = APIRouter()
 
-@router.get("/my-stats", response_model=UserStatsRead)
+
+@router.get(
+    "/my-stats",
+    response_model=UserStatsRead,
+    summary="Récupérer mes statistiques"
+)
 async def get_my_statistics(
         current_user: User = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session)

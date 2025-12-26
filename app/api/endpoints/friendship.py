@@ -19,11 +19,12 @@ from uuid import UUID
 
 router = APIRouter()
 
+
 @router.post(
     "/",
     response_model=FriendshipReadSimple,
     status_code=status.HTTP_201_CREATED,
-    summary="Envoie une demande d'amitié (PENDING)."
+    summary="Envoyer une demande d'amitié"
 )
 async def send_friend_request(
         user_two_id: str,
@@ -31,6 +32,7 @@ async def send_friend_request(
         current_user: UserRead = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session),
 ):
+    """Envoie une demande d'amitié à un utilisateur avec notification et vérifie qu'aucune relation n'existe déjà."""
     sender_id = current_user.id
     receiver_id = uuid.UUID(user_two_id)
 
@@ -95,7 +97,7 @@ async def send_friend_request(
 @router.put(
     "/{user_id}",
     response_model=FriendshipReadSimple,
-    summary="Met à jour le statut d'une demande d'amitié (ACCEPT/DECLINE/BLOCK)."
+    summary="Mettre à jour le statut d'une demande d'amitié"
 )
 async def update_friendship_status(
         user_id: uuid.UUID,
@@ -103,6 +105,7 @@ async def update_friendship_status(
         current_user: UserRead = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session),
 ):
+    """Met à jour le statut d'une relation d'amitié (accepter, refuser ou bloquer) avec notifications."""
     current_user_id = current_user.id
 
     # 1. Récupération de la relation
@@ -185,7 +188,7 @@ async def update_friendship_status(
 @router.get(
     "/friends",
     response_model=List[FriendProfileRead],
-    summary="Récupère les relations d'un utilisateur, filtrées par statut."
+    summary="Récupérer la liste d'amis"
 )
 async def get_user_friends_list(
         current_user: UserRead = Depends(get_current_active_user),
@@ -195,6 +198,7 @@ async def get_user_friends_list(
         page: int = Query(1, ge=1, description="Page number"),
         session: AsyncSession = Depends(get_session),
 ):
+    """Récupère les relations d'amitié d'un utilisateur filtrées par statut avec pagination."""
     PAGE_SIZE = 20
     offset = (page - 1) * PAGE_SIZE
 
@@ -241,7 +245,7 @@ async def get_user_friends_list(
 @router.get(
     "/status/{user_id}",
     response_model=Optional[FriendshipReadSimple],
-    summary="Vérifie le statut d'amitié avec un utilisateur."
+    summary="Vérifier le statut d'amitié"
 )
 async def check_friendship_status(
         user_id: uuid.UUID,
@@ -258,10 +262,11 @@ async def check_friendship_status(
 
     return friendship
 
+
 @router.get(
     "/pending",
     response_model=List[FriendProfileRead],
-    summary="Récupère toutes les demandes d'amitié en attente (reçues)."
+    summary="Récupérer les demandes d'amitié en attente"
 )
 async def get_pending_friend_requests(
         current_user: UserRead = Depends(get_current_active_user),
@@ -306,12 +311,10 @@ async def get_pending_friend_requests(
     return pending_requests_list
 
 
-# --- DELETE /api/v1/friendships/{user_id} ---
-
 @router.delete(
     "/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Supprime une relation (Annulation de demande, ou Unfriend)."
+    summary="Supprimer une relation d'amitié"
 )
 async def delete_friendship(
         user_id: uuid.UUID,
@@ -335,13 +338,17 @@ async def delete_friendship(
     return
 
 
-@router.get("/{challenge_id}/inviteable-friends", response_model=List[FriendProfileRead],summary="Récupère les amis qui ne sont pas encore membres du challenge")
+@router.get(
+    "/{challenge_id}/inviteable-friends",
+    response_model=List[FriendProfileRead],
+    summary="Récupérer les amis invitables à un challenge"
+)
 async def get_inviteable_friends(
     challenge_id: UUID,
     current_user: UserRead = Depends(get_current_active_user),
     session: AsyncSession = Depends(get_session),
 ):
-
+    """Récupère la liste des amis de l'utilisateur connecté qui ne sont pas encore membres du challenge spécifié."""
     return await crud_friendship.get_friends_not_in_challenge(
         session=session,
         current_user=current_user.id,

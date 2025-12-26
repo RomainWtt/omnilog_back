@@ -9,11 +9,15 @@ from typing import List
 router = APIRouter()
 
 
-@router.get("/", response_model=List[GenreRead])
+@router.get(
+    "/",
+    response_model=List[GenreRead],
+    summary="Récupérer tous les genres"
+)
 async def get_all_genres(
     session: AsyncSession = Depends(get_session),
 ):
-    """Get all available genres from database"""
+    """Récupère tous les genres disponibles dans la base de données, triés par nom."""
     try:
         result = await session.execute(select(Genre).order_by(Genre.name))
         genres = result.scalars().all()

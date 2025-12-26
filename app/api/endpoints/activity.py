@@ -11,12 +11,16 @@ from app.db.session import get_session
 router = APIRouter()
 
 
-@router.delete("/{activity_id}")
+@router.delete(
+    "/{activity_id}",
+    summary="Supprimer une activité challenge"
+)
 async def remove_activity_challenge(
     activity_id: UUID,
     current_user: User = Depends(get_current_active_user),
     session: AsyncSession = Depends(get_session)
 ):
+    """Supprime une activité challenge par son identifiant UUID."""
     success = await crud_activity.delete_activity_by_id(session, activity_id)
     if not success:
         raise HTTPException(status_code=404, detail="Activité impossible à supprimer")

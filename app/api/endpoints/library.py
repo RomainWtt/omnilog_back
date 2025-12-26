@@ -1,6 +1,5 @@
-import asyncio
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -27,14 +26,17 @@ from app.schemas.media import (
 from app.schemas.streaming_availability import StreamingAvailabilityRead
 from app.schemas.watch_list_stats import WatchlistStats
 from app.services.notification_service import notification_service
-from app.services.streaming_service import streaming_service
-from app.services.tmdb_service import tmdb_service
 from app.services.recommendation_service import recommendation_service
+from app.services.streaming_service import streaming_service
 
 router = APIRouter()
 
 
-@router.get("/recommendations", response_model=List[MediaRead])
+@router.get(
+    "/recommendations",
+    response_model=List[MediaRead],
+    summary="Obtenir des recommandations personnalisées"
+)
 async def get_recommendations(
         limit: int = Query(30, ge=1, le=50),
         current_user: User = Depends(get_optional_current_user),
@@ -108,15 +110,16 @@ def _map_tmdb_to_schema(item: dict, media_type: MediaType, genre_objects: List[G
     )
 
 
-@router.get("/favorites/count", response_model=int)
+@router.get(
+    "/favorites/count",
+    response_model=int,
+    summary="Compter les favoris"
+)
 async def get_favorites_count(
         current_user: User = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session)
 ):
-    """
-    Get count of media marked as favorite by the current user
-    """
-
+    """Retourne le nombre total de médias marqués comme favoris par l'utilisateur connecté."""
     stmt = select(func.count(UserMediaEntry.media_id)).where(
         UserMediaEntry.user_id == current_user.id,
         UserMediaEntry.is_favorite == True
@@ -128,7 +131,11 @@ async def get_favorites_count(
     return count
 
 
-@router.get("/stats", response_model=WatchlistStats)
+@router.get(
+    "/stats",
+    response_model=WatchlistStats,
+    summary="Obtenir les statistiques de la watchlist"
+)
 async def get_watchlist_stats(
         current_user: User = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session)
@@ -170,8 +177,6 @@ async def get_watchlist_stats(
     series_count = series_result.scalar() or 0
 
     # Requête pour compter les animés
-    # Les animés sont identifiés par le genre_ids contenant l'ID 16 (Animation de TMDB)
-    # On cast genre_ids de json vers jsonb pour utiliser l'opérateur @>
     anime_stmt = (
         select(func.count(UserMediaEntry.media_id))
         .join(Media, UserMediaEntry.media_id == Media.id)
@@ -179,7 +184,6 @@ async def get_watchlist_stats(
             UserMediaEntry.user_id == current_user.id,
             UserMediaEntry.list_status == ListStatus.PLAN_TO_WATCH,
             Media.media_type != MediaType.MOVIE,
-            # On pourrait avoir des animé ayant le type movie alors que ceux-ci sont compté dans la partie movie
             cast(Media.genre_ids, JSONB).contains([16])
         )
     )
@@ -199,7 +203,11 @@ async def get_watchlist_stats(
     )
 
 
-@router.get("/completed/top-rated", response_model=list[UserMediaEntryWithMedia])
+@router.get(
+    "/completed/top-rated",
+    response_model=list[UserMediaEntryWithMedia],
+    summary="Obtenir les médias terminés les mieux notés"
+)
 async def get_top_rated_completed(
         min_score: float = Query(4.0, ge=0, le=5, description="Minimum score (default: 4.0)"),
         limit: int = Query(50, ge=1, le=100),
@@ -231,7 +239,12 @@ async def get_top_rated_completed(
     return result
 
 
-@router.post("/", response_model=UserMediaEntryRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=UserMediaEntryRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Ajouter un média à la bibliothèque"
+)
 async def add_to_library(
         entry_data: UserMediaEntryCreate,
         current_user: User = Depends(get_current_active_user),
@@ -248,7 +261,7 @@ async def add_to_library(
             detail="Media not found"
         )
 
-    # Create or update entry - REMOVED progress parameter
+    # Create or update entry
     entry = await crud_media.create_user_media_entry(
         session=session,
         user_id=current_user.id,
@@ -264,18 +277,21 @@ async def add_to_library(
     return entry
 
 
-@router.get("/availability/{tmdb_id}", response_model=StreamingAvailabilityRead)
+@router.get(
+    "/availability/{tmdb_id}",
+    response_model=StreamingAvailabilityRead,
+    summary="Obtenir la disponibilité en streaming"
+)
 async def get_streaming_availability(
         tmdb_id: int,
         media_type: MediaType = Query("movie", description="Type de média: 'movie' ou 'tv'"),
         country_code: str = Query("FR", description="Code ISO 3166-1 alpha-2 du pays (ex: 'FR', 'CA', 'US')"),
         session: AsyncSession = Depends(get_session)
-        # Gardé pour la cohérence, mais pas nécessaire si seul le service est appelé
 ):
+    """Récupère les plateformes de streaming où un média est disponible pour un pays spécifique."""
     # Valider l'existence du média dans votre DB (optionnel mais recommandé)
     media_entry = await crud_media.get_media_by_tmdb_id(session, tmdb_id, media_type.lower())
     if not media_entry:
-        # Optionnel: tenter d'ajouter le média à la DB avant de continuer si non trouvé.
         pass
 
     try:
@@ -290,22 +306,24 @@ async def get_streaming_availability(
         return StreamingAvailabilityRead(**availability_data)
 
     except Exception as e:
-        # Gérer spécifiquement les erreurs de l'API externe (ex: limite de requêtes atteinte)
+        # Gérer spécifiquement les erreurs de l'API externe
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Erreur lors de la récupération des données de streaming: {str(e)}"
         )
 
 
-@router.get("/{media_id}", response_model=UserMediaEntryRead)
+@router.get(
+    "/{media_id}",
+    response_model=UserMediaEntryRead,
+    summary="Récupérer une entrée de bibliothèque"
+)
 async def get_library_entry(
         media_id: UUID,
         current_user: User = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session)
 ):
-    """
-    Get user's library entry for specific media
-    """
+    """Récupère l'entrée de bibliothèque de l'utilisateur pour un média spécifique."""
     entry = await crud_media.get_user_media_entry(
         session=session,
         user_id=current_user.id,
@@ -321,7 +339,11 @@ async def get_library_entry(
     return entry
 
 
-@router.put("/{media_id}", response_model=UserMediaEntryRead)
+@router.put(
+    "/{media_id}",
+    response_model=UserMediaEntryRead,
+    summary="Mettre à jour une entrée de bibliothèque"
+)
 async def update_library_entry(
         media_id: UUID,
         entry_update: UserMediaEntryUpdate,
@@ -358,7 +380,11 @@ async def update_library_entry(
     return updated_entry
 
 
-@router.put("/{media_id}/progress", response_model=UserMediaEntryRead | None)
+@router.put(
+    "/{media_id}/progress",
+    response_model=UserMediaEntryRead | None,
+    summary="Mettre à jour la progression de visionnage"
+)
 async def update_progress(
         media_id: UUID,
         progress: ProgressUpdate,
@@ -398,7 +424,7 @@ async def update_progress(
         return None
 
     if not existing_entry:
-        # Create new entry if doesn't exist - REMOVED progress parameter
+        # Create new entry if doesn't exist
         existing_entry = await crud_media.create_user_media_entry(
             session=session,
             user_id=current_user.id,
@@ -410,7 +436,7 @@ async def update_progress(
         )
         return existing_entry
 
-    # Update progress - REMOVED progress parameter
+    # Update progress
     updated_entry = await crud_media.update_user_media_entry(
         session=session,
         user_id=current_user.id,
@@ -424,15 +450,17 @@ async def update_progress(
     return updated_entry
 
 
-@router.delete("/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{media_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Retirer un média de la bibliothèque"
+)
 async def remove_from_library(
         media_id: UUID,
         current_user: User = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session)
 ):
-    """
-    Remove media from user's library
-    """
+    """Supprime un média de la bibliothèque de l'utilisateur."""
     deleted = await crud_media.delete_user_media_entry(
         session=session,
         user_id=current_user.id,
@@ -448,15 +476,17 @@ async def remove_from_library(
     return None
 
 
-@router.post("/{media_id}/favorite", response_model=UserMediaEntryRead)
+@router.post(
+    "/{media_id}/favorite",
+    response_model=UserMediaEntryRead,
+    summary="Basculer le statut favori"
+)
 async def toggle_favorite(
         media_id: UUID,
         current_user: User = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session)
 ):
-    """
-    Toggle favorite status for a media item
-    """
+    """Bascule le statut favori d'un média et notifie les amis lors de l'ajout."""
     entry = await crud_media.get_user_media_entry(
         session=session,
         user_id=current_user.id,
@@ -473,7 +503,7 @@ async def toggle_favorite(
             is_favorite=True
         )
 
-        # 🆕 Notifier les amis
+        # Notifier les amis
         media = await crud_media.get_media_by_id(session, media_id)
         await notification_service.notify_all_friends(
             session=session,
@@ -512,18 +542,18 @@ async def toggle_favorite(
     return updated_entry
 
 
-@router.get("/user/{user_id}/media/{media_id}", response_model=UserMediaEntryRead | None)
+@router.get(
+    "/user/{user_id}/media/{media_id}",
+    response_model=UserMediaEntryRead | None,
+    summary="Récupérer l'entrée média d'un utilisateur"
+)
 async def get_user_media_entry(
         user_id: UUID,
         media_id: UUID,
         current_user: User = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session)
 ):
-    """
-    Get a specific user's library entry for a specific media
-
-    Note: This allows viewing other users' media entries (useful for friends/social features)
-    """
+    """Récupère l'entrée de bibliothèque d'un utilisateur spécifique pour un média donné."""
     # Récupérer l'entrée pour l'utilisateur spécifié
     entry = await crud_media.get_user_media_entry(
         session=session,
@@ -537,7 +567,11 @@ async def get_user_media_entry(
     return entry
 
 
-@router.get("/user/{user_id}", response_model=list[UserMediaEntryWithMedia])
+@router.get(
+    "/user/{user_id}",
+    response_model=list[UserMediaEntryWithMedia],
+    summary="Récupérer la bibliothèque d'un utilisateur"
+)
 async def get_user_library(
         user_id: UUID,
         status: Optional[ListStatus] = Query(None, description="Filter by list status"),
@@ -551,11 +585,10 @@ async def get_user_library(
 
     Can filter by status: watching, completed, plan_to_watch, dropped, on_hold, favorite
     """
-    # Optionnel: vérifier les permissions (ami, profil public, etc.)
 
     entries = await crud_media.get_user_library(
         session=session,
-        user_id=user_id,  # <-- Utilise user_id du path au lieu de current_user
+        user_id=user_id,
         status=status,
         limit=limit,
         offset=offset
@@ -572,7 +605,11 @@ async def get_user_library(
     return result
 
 
-@router.get("/user/{user_id}/favorites", response_model=list[UserMediaEntryWithMedia])
+@router.get(
+    "/user/{user_id}/favorites",
+    response_model=list[UserMediaEntryWithMedia],
+    summary="Récupérer les favoris d'un utilisateur"
+)
 async def get_user_favorites(
         user_id: UUID,
         limit: int = Query(100, ge=1, le=100),
@@ -580,11 +617,8 @@ async def get_user_favorites(
         current_user: User = Depends(get_current_active_user),
         session: AsyncSession = Depends(get_session)
 ):
-    """
-    Get a specific user's favorite media (where is_favorite=True)
-    """
-
-    entries = await crud_media.get_user_favorites(  # ← Utilise la nouvelle fonction CRUD
+    """Récupère tous les médias marqués comme favoris par un utilisateur spécifique."""
+    entries = await crud_media.get_user_favorites(
         session=session,
         user_id=user_id,
         limit=limit,
