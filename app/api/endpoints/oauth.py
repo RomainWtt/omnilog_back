@@ -1,6 +1,8 @@
 """
 OAuth Authentication Routes - Optimized for OpenAPI generation
 """
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
@@ -43,10 +45,22 @@ async def google_login(request: Request):
     # Générer un state unique pour la sécurité CSRF
     state = secrets.token_urlsafe(32)
 
-    # ✅ Stocker dans Redis avec expiration de 10 minutes (600 secondes)
-    await redis_service.set(f"oauth_state:{state}", "true", ttl=600)
+    # ✅ Augmenter le TTL à 1 heure pour debug
+    success = await redis_service.set(f"oauth_state:{state}", "true", ttl=3600)
 
-    # Construire l'URL de redirection
+    # ✅ Vérifier immédiatement
+    verify = await redis_service.get(f"oauth_state:{state}")
+
+    # ✅ Créer une clé de debug avec plus d'infos
+    debug_key = f"oauth_debug:{state}"
+    debug_data = {
+        "created_at": str(datetime.utcnow()),
+        "state": state,
+        "set_success": success,
+        "verify_result": verify
+    }
+    await redis_service.set(debug_key, debug_data, ttl=3600)
+
     redirect_uri = request.url_for('google_callback_get')
 
     return await oauth.google.authorize_redirect(
@@ -143,43 +157,42 @@ async def google_callback_post(
     """
 
     debug_info = {
-        "code_received": callback_data.code[:20] + "..." if callback_data.code else None,
         "state_received": callback_data.state,
         "redis_connected": redis_service._client is not None,
     }
-    # ✅ Vérifier le state dans Redis
-    state_value = await redis_service.get(f"oauth_state:{callback_data.state}")
 
-    debug_info["state_found_in_redis"] = state_value
+    if callback_data.state:
+        # Vérifier le state
+        state_value = await redis_service.get(f"oauth_state:{callback_data.state}")
+        debug_info["state_in_redis"] = state_value
 
-    if not state_value:
-        # 🔍 Lister toutes les clés oauth_state dans Redis
-        all_oauth_keys = []
+        # Récupérer les infos de debug
+        debug_data = await redis_service.get(f"oauth_debug:{callback_data.state}")
+        debug_info["debug_data"] = debug_data
+
+        # Lister TOUTES les clés oauth
+        all_keys = []
         if redis_service._client:
-            try:
-                cursor = 0
-                while True:
-                    cursor, batch = await redis_service._client.scan(cursor, match="oauth_state:*", count=100)
-                    all_oauth_keys.extend(batch)
-                    if cursor == 0:
-                        break
-            except Exception as e:
-                debug_info["redis_scan_error"] = str(e)
+            cursor = 0
+            while True:
+                cursor, batch = await redis_service._client.scan(cursor, match="oauth_*", count=100)
+                all_keys.extend(batch)
+                if cursor == 0:
+                    break
+        debug_info["all_oauth_keys"] = all_keys
 
-        debug_info["all_oauth_keys_in_redis"] = all_oauth_keys
-        debug_info["total_oauth_keys"] = len(all_oauth_keys)
+        if not state_value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "Invalid or expired state parameter",
+                    "debug": debug_info
+                }
+            )
 
-        # 🔍 Retourner les détails dans l'erreur
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error": "Invalid or expired state parameter",
-                "debug": debug_info
-            }
-        )
-
-    # Supprimer le state après utilisation
-    await redis_service.delete(f"oauth_state:{callback_data.state}")
+        # Supprimer les clés
+        await redis_service.delete(f"oauth_state:{callback_data.state}")
+        await redis_service.delete(f"oauth_debug:{callback_data.state}")
 
     try:
         # Échanger le code contre un token
