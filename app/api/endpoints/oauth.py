@@ -141,18 +141,45 @@ async def google_callback_post(
     - **refresh_token**: JWT refresh token for renewing access
     - **token_type**: Always "bearer"
     """
+
+    debug_info = {
+        "code_received": callback_data.code[:20] + "..." if callback_data.code else None,
+        "state_received": callback_data.state,
+        "redis_connected": redis_service._client is not None,
+    }
     # ✅ Vérifier le state dans Redis
-    if callback_data.state:
-        state_exists = await redis_service.exists(f"oauth_state:{callback_data.state}")
+    state_value = await redis_service.get(f"oauth_state:{callback_data.state}")
 
-        if not state_exists:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired state parameter"
-            )
+    debug_info["state_found_in_redis"] = state_value
 
-        # Supprimer le state après utilisation
-        await redis_service.delete(f"oauth_state:{callback_data.state}")
+    if not state_value:
+        # 🔍 Lister toutes les clés oauth_state dans Redis
+        all_oauth_keys = []
+        if redis_service._client:
+            try:
+                cursor = 0
+                while True:
+                    cursor, batch = await redis_service._client.scan(cursor, match="oauth_state:*", count=100)
+                    all_oauth_keys.extend(batch)
+                    if cursor == 0:
+                        break
+            except Exception as e:
+                debug_info["redis_scan_error"] = str(e)
+
+        debug_info["all_oauth_keys_in_redis"] = all_oauth_keys
+        debug_info["total_oauth_keys"] = len(all_oauth_keys)
+
+        # 🔍 Retourner les détails dans l'erreur
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "Invalid or expired state parameter",
+                "debug": debug_info
+            }
+        )
+
+    # Supprimer le state après utilisation
+    await redis_service.delete(f"oauth_state:{callback_data.state}")
 
     try:
         # Échanger le code contre un token
@@ -282,3 +309,31 @@ async def google_callback_post(
         refresh_token=refresh_token,
         token_type="bearer"
     )
+
+
+@router.get("/debug/redis-state")
+async def debug_redis_state():
+    """Debug endpoint to check Redis state"""
+
+    debug_info = {
+        "redis_connected": redis_service._client is not None,
+        "redis_url": settings.REDIS_URL,
+    }
+
+    # Lister toutes les clés oauth_state
+    all_oauth_keys = []
+    if redis_service._client:
+        try:
+            cursor = 0
+            while True:
+                cursor, batch = await redis_service._client.scan(cursor, match="oauth_state:*", count=100)
+                all_oauth_keys.extend(batch)
+                if cursor == 0:
+                    break
+        except Exception as e:
+            debug_info["redis_scan_error"] = str(e)
+
+    debug_info["all_oauth_keys"] = all_oauth_keys
+    debug_info["total_keys"] = len(all_oauth_keys)
+
+    return debug_info
