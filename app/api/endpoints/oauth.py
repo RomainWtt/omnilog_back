@@ -52,7 +52,7 @@ async def google_login(request: Request):
     }
     await redis_service.set(f"oauth_state:{state}", state_data, ttl=600)
 
-    redirect_uri = request.url_for('google_callback_get')
+    redirect_uri = settings.GOOGLE_REDIRECT_URI
 
     return await oauth.google.authorize_redirect(
         request,
