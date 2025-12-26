@@ -64,29 +64,27 @@ async def google_login(request: Request):
 @router.get(
     "/google/callback",
     summary="Google OAuth callback (browser redirect)",
-    description="Handles browser redirect from Google and forwards to frontend",
+    description="Handles browser redirect from Google and completes authentication",
     tags=["OAuth"],
     responses={
         302: {
-            "description": "Redirect to frontend with authorization code"
+            "description": "Redirect to frontend with tokens"
         }
     }
 )
 async def google_callback_get(
-    request: Request,
-    code: Annotated[str, Query(description="Authorization code from Google")],
-    state: Annotated[Optional[str], Query(description="State parameter for CSRF protection")] = None,
-    error: Annotated[Optional[str], Query(description="Error from Google")] = None
+        request: Request,
+        session: Annotated[AsyncSession, Depends(get_session)],
+        code: Annotated[str, Query(description="Authorization code from Google")],
+        state: Annotated[Optional[str], Query(description="State parameter for CSRF protection")] = None,
+        error: Annotated[Optional[str], Query(description="Error from Google")] = None
 ):
     """
-    GET endpoint for Google OAuth callback (for browser redirects)
+    GET endpoint for Google OAuth callback
 
-    This endpoint receives the redirect from Google after user authentication
-    and forwards the authorization code to the frontend callback page.
-
-    - **code**: Authorization code that can be exchanged for tokens
-    - **state**: CSRF protection token
-    - **error**: Error message if authentication failed
+    This endpoint receives the redirect from Google, validates the state,
+    exchanges the code for tokens, creates/authenticates the user,
+    and redirects to frontend with JWT tokens.
     """
     if error:
         return RedirectResponse(
@@ -98,9 +96,130 @@ async def google_callback_get(
             url=f"{settings.FRONTEND_URL}/connexion?error=no_code"
         )
 
-    # Rediriger vers le frontend avec le code
+    # Vérifier le state dans Redis
+    if state:
+        state_data = await redis_service.get(f"oauth_state:{state}")
+
+        if not state_data or not isinstance(state_data, dict) or not state_data.get("valid"):
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}/connexion?error=invalid_state"
+            )
+
+        # Supprimer le state après utilisation
+        await redis_service.delete(f"oauth_state:{state}")
+
+    try:
+        # Échanger le code contre un token
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(
+                'https://oauth2.googleapis.com/token',
+                data={
+                    'code': code,
+                    'client_id': settings.GOOGLE_CLIENT_ID,
+                    'client_secret': settings.GOOGLE_CLIENT_SECRET,
+                    'redirect_uri': settings.GOOGLE_REDIRECT_URI,
+                    'grant_type': 'authorization_code',
+                }
+            )
+
+            if token_response.status_code != 200:
+                return RedirectResponse(
+                    url=f"{settings.FRONTEND_URL}/connexion?error=token_exchange_failed"
+                )
+
+            token_data = token_response.json()
+            access_token = token_data.get('access_token')
+
+            # Récupérer les informations utilisateur
+            user_response = await client.get(
+                'https://www.googleapis.com/oauth2/v2/userinfo',
+                headers={'Authorization': f'Bearer {access_token}'}
+            )
+
+            if user_response.status_code != 200:
+                return RedirectResponse(
+                    url=f"{settings.FRONTEND_URL}/connexion?error=user_info_failed"
+                )
+
+            user_info = user_response.json()
+
+    except Exception as e:
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}/connexion?error=oauth_error"
+        )
+
+    # Extraire les informations
+    google_id = user_info.get('id')
+    email = user_info.get('email')
+    name = user_info.get('name', email.split('@')[0] if email else 'user')
+    picture = user_info.get('picture')
+
+    if not email or not google_id:
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}/connexion?error=missing_info"
+        )
+
+    # Vérifier si l'utilisateur existe déjà
+    user = await crud_oauth.get_user_by_google_id(
+        session=session,
+        google_id=google_id
+    )
+
+    if not user:
+        existing_user = await crud_user.get_user_by_email(session, email)
+
+        if existing_user:
+            user = await crud_oauth.link_google_to_existing_user(
+                session=session,
+                user=existing_user,
+                google_id=google_id
+            )
+
+            if not user.email_verified:
+                EmailVerificationService.mark_as_verified_by_oauth(user, "google")
+                session.add(user)
+                await session.commit()
+                await session.refresh(user)
+        else:
+            # Créer un nouveau compte
+            base_username = name.lower().replace(' ', '_').replace('-', '_')
+            base_username = ''.join(c for c in base_username if c.isalnum() or c == '_')
+            if not base_username:
+                base_username = 'user'
+
+            username = base_username
+            counter = 1
+
+            while await crud_user.get_user_by_username(session, username):
+                username = f"{base_username}_{counter}"
+                counter += 1
+
+            user = await crud_oauth.create_google_user(
+                session=session,
+                email=email,
+                username=username,
+                google_id=google_id,
+                avatar_url=picture
+            )
+
+            EmailVerificationService.mark_as_verified_by_oauth(user, "google")
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+    else:
+        if not user.email_verified:
+            EmailVerificationService.mark_as_verified_by_oauth(user, "google")
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+
+    # Créer les tokens JWT
+    jwt_access_token = create_access_token(data={"sub": str(user.id)})
+    jwt_refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+    # Rediriger vers le frontend avec les tokens
     return RedirectResponse(
-        url=f"{settings.FRONTEND_URL}/auth/callback/google?code={code}&state={state or ''}"
+        url=f"{settings.FRONTEND_URL}/auth/callback/google?access_token={jwt_access_token}&refresh_token={jwt_refresh_token}"
     )
 
 
