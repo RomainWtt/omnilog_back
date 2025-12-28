@@ -102,6 +102,9 @@ class User(SQLModel, table=True):
         sa_column=Column(JSON)
     )
 
+    jellyfin_url: Optional[str] = Field(default=None, nullable=True)
+    jellyfin_api_key: Optional[str] = Field(default=None, nullable=True)
+
     media_entries: list["UserMediaEntry"] = Relationship(back_populates="user")
     reviews: list["Review"] = Relationship(back_populates="user")
     activities: list["Activity"] = Relationship(back_populates="user")
