@@ -55,6 +55,7 @@ class UserRead(UserBase):
     email_verified: bool
     created_at: datetime
     social_links: Optional[dict] = None
+    jellyfin_url: Optional[str] = None
 
     # NOUVEAUX CHAMPS OAUTH
     google_id: Optional[str] = None

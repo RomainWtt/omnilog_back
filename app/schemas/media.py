@@ -108,6 +108,7 @@ class UserMediaEntryRead(UserMediaEntryBase):
     timecode: int
     score: Optional[int]
     is_favorite: bool
+    is_in_jellyfin: Optional[bool] = None
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
     created_at: datetime
