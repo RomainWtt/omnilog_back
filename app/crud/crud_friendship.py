@@ -425,10 +425,8 @@ async def get_friends_not_in_challenge(
     result = await session.execute(stmt)
     existing_notifications = result.scalars().all()
 
-    invited_ids = [
-        UUID(n.data.get("friend_id")) if "friend_id" in n.data else UUID(n.user_id)
-        for n in existing_notifications
-    ]
+    # ✅ FIX: user_id est déjà un UUID, pas besoin de conversion
+    invited_ids = [n.user_id for n in existing_notifications]
 
     # 4️⃣ Filtrer les amis invitables
     inviteable_ids = [
