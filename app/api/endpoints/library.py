@@ -749,14 +749,13 @@ async def import_from_jellyfin(
                     session=session,
                     user_id=current_user.id,
                     media_id=media.id,
-                    list_status=ListStatus.COMPLETED,
+                    list_status=ListStatus.PLAN_TO_WATCH,
                     score=None, # Or parse 'CommunityRating' from Jellyfin if desired
-                    is_favorite=False
+                    is_favorite=False,
+                    is_in_jellyfin = True
                 )
                 imported_count += 1
-            elif user_entry.list_status != ListStatus.COMPLETED:
-                # Optional: Update existing entry to completed?
-                # For now, we skip if entry exists to avoid overwriting user data
+            elif user_entry.list_status != ListStatus.COMPLETED or user_entry.list_status != ListStatus.PLAN_TO_WATCH:
                 skipped_count += 1
             else:
                 skipped_count += 1

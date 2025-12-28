@@ -186,6 +186,7 @@ class UserMediaEntry(SQLModel, table=True):
     user_id: UUID = Field(foreign_key="users.id", primary_key=True)
     media_id: UUID = Field(foreign_key="media.id", primary_key=True)
     list_status: ListStatus = Field(default=ListStatus.PLAN_TO_WATCH)
+    is_in_jellyfin: Optional[bool] = Field(default=False)
 
     current_season: Optional[int] = Field(default=None)
     current_episode: Optional[int] = Field(default=None)
