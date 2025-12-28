@@ -43,6 +43,8 @@ class UserUpdate(BaseModel):
     birth_date: Optional[date] = None
     social_links: Optional[dict] = None
     current_password: Optional[str] = None
+    jellyfin_url: Optional[str] = None
+    jellyfin_api_key: Optional[str] = None
 
 class UserRead(UserBase):
     id: UUID

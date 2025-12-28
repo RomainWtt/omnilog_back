@@ -1,6 +1,10 @@
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
+import httpx
+from app.services.tmdb_service import tmdb_service
+from app.crud import crud_media
+from app.db.models import MediaType, ListStatus
 
 from fastapi import APIRouter, Depends
 from fastapi import HTTPException, status, Query
@@ -634,3 +638,137 @@ async def get_user_favorites(
             result.append(UserMediaEntryWithMedia(**entry_dict))
 
     return result
+
+@router.post(
+    "/import/jellyfin",
+    summary="Import movies from Jellyfin",
+    description="Fetches movies from the configured Jellyfin server and adds them to the library as COMPLETED."
+)
+async def import_from_jellyfin(
+    current_user: User = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_session)
+):
+    # 1. Validate credentials
+    if not current_user.jellyfin_url or not current_user.jellyfin_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Jellyfin URL and API Key must be configured in your profile."
+        )
+
+    # 2. Fetch data from Jellyfin
+    jellyfin_url = current_user.jellyfin_url.rstrip('/')
+    api_url = f"{jellyfin_url}/Items"
+    params = {
+        "recursive": "true",
+        "includeItemTypes": "Movie",
+        "fields": "ProviderIds",
+        "api_key": current_user.jellyfin_api_key
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(api_url, params=params, timeout=30.0)
+            response.raise_for_status()
+            data = response.json()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to contact Jellyfin: {str(e)}"
+        )
+
+    imported_count = 0
+    skipped_count = 0
+    errors = []
+
+    # 3. Process items
+    items = data.get("Items", [])
+    
+    for item in items:
+        try:
+            # Check if TMDB ID exists
+            provider_ids = item.get("ProviderIds", {})
+            tmdb_id = provider_ids.get("Tmdb")
+            
+            if not tmdb_id:
+                skipped_count += 1
+                continue
+
+            tmdb_id = int(tmdb_id)
+            
+            # Check if media exists in our DB, if not fetch from TMDB and create
+            media = await crud_media.get_media_by_tmdb_id(
+                session, 
+                tmdb_id=tmdb_id, 
+                media_type=MediaType.MOVIE
+            )
+
+            if not media:
+                # Logic reused from media endpoint to fetch & create
+                try:
+                    tmdb_data = await tmdb_service.get_movie_details(tmdb_id)
+                    
+                    # Extract necessary data fields... (Simplified for brevity, ensure all required fields are present)
+                    actors = [actor["name"] for actor in tmdb_data.get("credits", {}).get("cast", [])[:5]]
+                    directors = [crew["name"] for crew in tmdb_data.get("credits", {}).get("crew", []) if crew.get("job") == "Director"]
+                    
+                    media = await crud_media.create_media_with_translations(
+                        session=session,
+                        tmdb_id=tmdb_id,
+                        media_type=MediaType.MOVIE,
+                        title=tmdb_data.get("title"),
+                        original_title=tmdb_data.get("original_title"),
+                        overview=tmdb_data.get("overview"),
+                        poster_path=tmdb_data.get("poster_path"),
+                        backdrop_path=tmdb_data.get("backdrop_path"),
+                        release_date=datetime.strptime(tmdb_data.get("release_date", "1900-01-01"), "%Y-%m-%d").date() if tmdb_data.get("release_date") else None,
+                        runtime=tmdb_data.get("runtime"),
+                        genre_ids=[g["id"] for g in tmdb_data.get("genres", [])],
+                        vote_average=tmdb_data.get("vote_average"),
+                        vote_count=tmdb_data.get("vote_count"),
+                        popularity=tmdb_data.get("popularity"),
+                        original_language=tmdb_data.get("original_language"),
+                        actors=actors,
+                        directors=directors
+                        # Add other fields like production_companies if needed
+                    )
+                except Exception as e:
+                    print(f"Error fetching TMDB data for ID {tmdb_id}: {e}")
+                    skipped_count += 1
+                    continue
+
+            # Check if user already has this in library
+            user_entry = await crud_media.get_user_media_entry(
+                session, 
+                user_id=current_user.id, 
+                media_id=media.id
+            )
+
+            if not user_entry:
+                # Add as COMPLETED
+                await crud_media.create_user_media_entry(
+                    session=session,
+                    user_id=current_user.id,
+                    media_id=media.id,
+                    list_status=ListStatus.COMPLETED,
+                    score=None, # Or parse 'CommunityRating' from Jellyfin if desired
+                    is_favorite=False
+                )
+                imported_count += 1
+            elif user_entry.list_status != ListStatus.COMPLETED:
+                # Optional: Update existing entry to completed?
+                # For now, we skip if entry exists to avoid overwriting user data
+                skipped_count += 1
+            else:
+                skipped_count += 1
+
+        except Exception as e:
+            errors.append(f"Error processing {item.get('Name')}: {str(e)}")
+            skipped_count += 1
+
+    return {
+        "message": "Import finished",
+        "imported": imported_count,
+        "skipped_existing_or_invalid": skipped_count,
+        "total_processed": len(items),
+        "errors": errors[:5] # Return first 5 errors to avoid huge responses
+    }
